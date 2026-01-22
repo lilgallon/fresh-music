@@ -2,6 +2,10 @@
 
 A modern, minimalist dashboard to track music releases from your favorite YouTube channels.
 
+![homepage](.github/assets/homepage.png)
+
+![settings](.github/assets/settings.png)
+
 ## Setup Instructions
 
 1.  **Get a YouTube Data API v3 Key:**

@@ -25,6 +25,35 @@ A modern, minimalist dashboard to track music releases from your favorite YouTub
     - `npm install`
     - `npm run dev`
 
+## Docker Usage
+
+You can run the application using Docker. The image is optimized for production and supports runtime configuration for the YouTube API Key.
+
+### Running with Docker
+
+1.  **Build the image locally:**
+    ```bash
+    docker build -t fresh-music .
+    ```
+
+2.  **Run the container:**
+    Provide your API key at runtime using the `YOUTUBE_API_KEY` environment variable:
+    ```bash
+    docker run -p 3000:3000 -e YOUTUBE_API_KEY=YOUR_API_KEY_HERE fresh-music
+    ```
+
+### Running with Docker Compose
+
+```yaml
+services:
+  fresh-music:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/fresh-music:main
+    ports:
+      - "3000:3000"
+    environment:
+      - YOUTUBE_API_KEY=YOUR_API_KEY_HERE
+```
+
 ## Features
 
 - **New Releases:** Automatically fetches the latest 5-10 videos from curated channels.

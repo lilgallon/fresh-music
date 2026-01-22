@@ -1,10 +1,32 @@
 import { YouTubeVideo, YouTubeChannel } from "@/types/youtube";
 
-const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
 const BASE_URL = "https://www.googleapis.com/youtube/v3";
+let cachedApiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "";
+let configPromise: Promise<string> | null = null;
+
+async function getApiKey(): Promise<string> {
+    if (cachedApiKey) return cachedApiKey;
+    if (configPromise) return configPromise;
+
+    configPromise = (async () => {
+        try {
+            const response = await fetch("/api/config");
+            const data = await response.json();
+            cachedApiKey = data.apiKey;
+            return cachedApiKey;
+        } catch {
+            return "";
+        } finally {
+            configPromise = null;
+        }
+    })();
+
+    return configPromise;
+}
 
 export async function fetchLatestVideos(channelId: string, limit: number = 5): Promise<YouTubeVideo[]> {
-    if (!API_KEY) {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
         console.error("YouTube API Key is missing");
         return [];
     }
@@ -18,14 +40,14 @@ export async function fetchLatestVideos(channelId: string, limit: number = 5): P
 
         // 2. Fetch latest videos from the playlist
         const response = await fetch(
-            `${BASE_URL}/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=${limit}&key=${API_KEY}`
+            `${BASE_URL}/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=${limit}&key=${apiKey}`
         );
 
         if (!response.ok) {
             // Silently attempt fallback to get the correct uploads playlist ID
             try {
                 const channelResponse = await fetch(
-                    `${BASE_URL}/channels?part=contentDetails&id=${channelId}&key=${API_KEY}`
+                    `${BASE_URL}/channels?part=contentDetails&id=${channelId}&key=${apiKey}`
                 );
 
                 if (channelResponse.ok) {
@@ -34,7 +56,7 @@ export async function fetchLatestVideos(channelId: string, limit: number = 5): P
 
                     if (realUploadsId) {
                         const retryResponse = await fetch(
-                            `${BASE_URL}/playlistItems?part=snippet&playlistId=${realUploadsId}&maxResults=${limit}&key=${API_KEY}`
+                            `${BASE_URL}/playlistItems?part=snippet&playlistId=${realUploadsId}&maxResults=${limit}&key=${apiKey}`
                         );
                         if (retryResponse.ok) {
                             const retryData = await retryResponse.json();
@@ -96,14 +118,15 @@ export interface SearchResultChannel {
 }
 
 export async function searchChannels(query: string): Promise<SearchResultChannel[]> {
-    if (!API_KEY) {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
         console.error("YouTube API Key is missing");
         return [];
     }
 
     try {
         const response = await fetch(
-            `${BASE_URL}/search?part=snippet&q=${encodeURIComponent(query)}&type=channel&maxResults=5&key=${API_KEY}`
+            `${BASE_URL}/search?part=snippet&q=${encodeURIComponent(query)}&type=channel&maxResults=5&key=${apiKey}`
         );
 
         if (!response.ok) {
@@ -126,11 +149,12 @@ export async function searchChannels(query: string): Promise<SearchResultChannel
 }
 
 export async function fetchChannelsInfo(channelIds: string[]): Promise<Partial<YouTubeChannel>[]> {
-    if (!API_KEY || channelIds.length === 0) return [];
+    const apiKey = await getApiKey();
+    if (!apiKey || channelIds.length === 0) return [];
 
     try {
         const response = await fetch(
-            `${BASE_URL}/channels?part=snippet,contentDetails&id=${channelIds.join(",")}&key=${API_KEY}`
+            `${BASE_URL}/channels?part=snippet,contentDetails&id=${channelIds.join(",")}&key=${apiKey}`
         );
 
         if (!response.ok) return [];

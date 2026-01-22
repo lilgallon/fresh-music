@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fresh Music Release Tracker
 
-## Getting Started
+A modern, minimalist dashboard to track music releases from your favorite YouTube channels.
 
-First, run the development server:
+## Setup Instructions
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1.  **Get a YouTube Data API v3 Key:**
+    - Go to the [Google Cloud Console](https://console.cloud.google.com/).
+    - Create a new project.
+    - Search for "YouTube Data API v3" and enable it.
+    - Go to "Credentials" and click "Create Credentials" > "API key".
+2.  **Configure Environment Variables:**
+    - Create a `.env.local` file in the root of the project.
+    - Add your API key:
+      ```env
+      NEXT_PUBLIC_YOUTUBE_API_KEY=your_api_key_here
+      ```
+3.  **Customize Channels:**
+    - Edit `src/config/channels.ts` to add or remove YouTube channels.
+4.  **Run Locally:**
+    - `npm install`
+    - `npm run dev`
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **New Releases:** Automatically fetches the latest 5-10 videos from curated channels.
+- **Watch Tracking:** Mark videos as watched to move them to the History tab.
+- **Persistence:** Watched status is saved in your browser's LocalStorage.
+- **Clean Player:** Watch videos directly on the site via a minimalist modal.
+- **Mobile First:** Fully responsive design for all devices.

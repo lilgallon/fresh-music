@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { X, Search, Plus, Trash2, Settings, Loader2, Download, Upload } from "lucide-react";
 import { YouTubeChannel } from "@/types/youtube";
 import { SearchResultChannel, searchChannels } from "@/lib/youtube";

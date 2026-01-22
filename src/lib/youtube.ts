@@ -64,7 +64,7 @@ export async function fetchLatestVideos(channelId: string, limit: number = 5): P
                         }
                     }
                 }
-            } catch (e) {
+            } catch {
                 // Ignore fallback errors
             }
 
@@ -79,8 +79,8 @@ export async function fetchLatestVideos(channelId: string, limit: number = 5): P
     }
 }
 
-function mapPlaylistItems(items: any[]): YouTubeVideo[] {
-    interface PlaylistSnippet {
+interface YouTubePlaylistItem {
+    snippet: {
         resourceId: { videoId: string };
         title: string;
         thumbnails: {
@@ -89,9 +89,11 @@ function mapPlaylistItems(items: any[]): YouTubeVideo[] {
         };
         channelTitle: string;
         publishedAt: string;
-    }
+    };
+}
 
-    return (items || []).map((item: { snippet: PlaylistSnippet }) => ({
+function mapPlaylistItems(items: YouTubePlaylistItem[]): YouTubeVideo[] {
+    return (items || []).map((item) => ({
         id: item.snippet.resourceId.videoId,
         title: item.snippet.title,
         thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url || "",
@@ -136,11 +138,23 @@ export async function searchChannels(query: string): Promise<SearchResultChannel
 
         const data = await response.json();
 
-        return data.items.map((item: any) => ({
+        interface SearchItem {
+            snippet: {
+                channelId: string;
+                title: string;
+                description: string;
+                thumbnails: {
+                    default?: { url: string };
+                    medium?: { url: string };
+                };
+            };
+        }
+
+        return (data.items || []).map((item: SearchItem) => ({
             id: item.snippet.channelId,
             title: item.snippet.title,
             description: item.snippet.description,
-            thumbnail: item.snippet.thumbnails.default?.url || item.snippet.thumbnails.medium?.url,
+            thumbnail: item.snippet.thumbnails.default?.url || item.snippet.thumbnails.medium?.url || "",
         }));
     } catch (error) {
         console.error(`Error searching channels for query ${query}:`, error);
@@ -160,10 +174,23 @@ export async function fetchChannelsInfo(channelIds: string[]): Promise<Partial<Y
         if (!response.ok) return [];
 
         const data = await response.json();
-        return (data.items || []).map((item: any) => ({
+
+        interface ChannelItem {
+            id: string;
+            snippet: {
+                title: string;
+                thumbnails: {
+                    default?: { url: string };
+                    medium?: { url: string };
+                };
+                description: string;
+            };
+        }
+
+        return (data.items || []).map((item: ChannelItem) => ({
             channelId: item.id,
             name: item.snippet.title,
-            thumbnail: item.snippet.thumbnails.default?.url || item.snippet.thumbnails.medium?.url,
+            thumbnail: item.snippet.thumbnails.default?.url || item.snippet.thumbnails.medium?.url || "",
             description: item.snippet.description,
         }));
     } catch (error) {

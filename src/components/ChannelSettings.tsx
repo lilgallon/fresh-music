@@ -1,20 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Search, Plus, Trash2, Settings, Loader2 } from "lucide-react";
+import { X, Search, Plus, Trash2, Settings, Loader2, Download, Upload } from "lucide-react";
 import { YouTubeChannel } from "@/types/youtube";
 import { SearchResultChannel, searchChannels } from "@/lib/youtube";
 import Image from "next/image";
 
 interface ChannelSettingsProps {
     followedChannels: YouTubeChannel[];
+    watchedIds: string[];
     onUpdateChannels: (channels: YouTubeChannel[]) => void;
+    onImportData: (channels: YouTubeChannel[], watchedIds: string[]) => void;
     onClose: () => void;
 }
 
 export default function ChannelSettings({
     followedChannels,
+    watchedIds,
     onUpdateChannels,
+    onImportData,
     onClose,
 }: ChannelSettingsProps) {
     const [searchQuery, setSearchQuery] = useState("");
@@ -27,6 +31,49 @@ export default function ChannelSettings({
         const results = await searchChannels(searchQuery);
         setSearchResults(results);
         setIsSearching(false);
+    };
+
+    const handleExport = () => {
+        const data = {
+            followedChannels,
+            watchedVideoIds: watchedIds,
+            exportedAt: new Date().toISOString(),
+            version: "1.0",
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `fresh-music-backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const content = event.target?.result as string;
+                const data = JSON.parse(content);
+
+                if (!Array.isArray(data.followedChannels) || !Array.isArray(data.watchedVideoIds)) {
+                    throw new Error("Invalid backup format");
+                }
+
+                if (confirm("This will overwrite your current settings. Continue?")) {
+                    onImportData(data.followedChannels, data.watchedVideoIds);
+                }
+            } catch (err) {
+                alert("Failed to import: Invalid or corrupted file.");
+                console.error(err);
+            }
+        };
+        reader.readAsText(file);
     };
 
     const addChannel = (result: SearchResultChannel) => {
@@ -57,16 +104,38 @@ export default function ChannelSettings({
             <div className="relative flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl animate-in zoom-in-95 duration-200 border border-zinc-800">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-zinc-800 p-6 flex-shrink-0">
-                    <div className="flex items-center space-x-2">
-                        <Settings className="h-5 w-5 text-zinc-400" />
-                        <h2 className="text-xl font-semibold text-white">Manage Channels</h2>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2">
+                            <Settings className="h-5 w-5 text-zinc-400" />
+                            <h2 className="text-xl font-semibold text-white">Manage & Backup</h2>
+                        </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
-                    >
-                        <X className="h-6 w-6" />
-                    </button>
+
+                    <div className="flex items-center space-x-2">
+                        <div className="flex items-center bg-zinc-800/50 rounded-lg p-1 border border-zinc-700">
+                            <button
+                                onClick={handleExport}
+                                className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-md transition-colors"
+                                title="Export data to JSON"
+                            >
+                                <Download className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Export</span>
+                            </button>
+                            <div className="w-[1px] h-4 bg-zinc-700 mx-1" />
+                            <label className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-md transition-colors cursor-pointer" title="Import data from JSON">
+                                <Upload className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Import</span>
+                                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+                            </label>
+                        </div>
+
+                        <button
+                            onClick={onClose}
+                            className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                        >
+                            <X className="h-6 w-6" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content */}

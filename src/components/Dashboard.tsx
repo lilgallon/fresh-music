@@ -84,6 +84,12 @@ export default function Dashboard() {
         );
     };
 
+    const handleImportData = (channels: YouTubeChannel[], watched: string[]) => {
+        setFollowedChannels(channels);
+        setWatchedIds(watched);
+        setShowSettings(false);
+    };
+
     const filteredVideos = videos.filter((v) =>
         activeTab === "new" ? !watchedIds.includes(v.id) : watchedIds.includes(v.id)
     );
@@ -94,7 +100,7 @@ export default function Dashboard() {
             <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
                 <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8">
                     <div className="flex items-center space-x-2">
-                        <div className="rounded-lg bg-primary p-1.5 text-primary-foreground">
+                        <div className="rounded-lg bg-primary p-1.5 text-primary-foreground focus-within:ring-2">
                             <Music2 className="h-5 w-5" />
                         </div>
                         <h1 className="text-xl font-bold tracking-tight">Fresh Music</h1>
@@ -104,7 +110,7 @@ export default function Dashboard() {
                         <nav className="hidden sm:flex space-x-1 rounded-lg bg-zinc-900/50 p-1">
                             <button
                                 onClick={() => setActiveTab("new")}
-                                className={`flex items-center space-x-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${activeTab === "new"
+                                className={`flex items-center space-x-2 rounded-md px-3 py-1.5 text-sm font-medium ${activeTab === "new"
                                     ? "bg-zinc-800 text-white shadow-sm"
                                     : "text-zinc-500 hover:text-zinc-300"
                                     }`}
@@ -114,7 +120,7 @@ export default function Dashboard() {
                             </button>
                             <button
                                 onClick={() => setActiveTab("history")}
-                                className={`flex items-center space-x-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${activeTab === "history"
+                                className={`flex items-center space-x-2 rounded-md px-3 py-1.5 text-sm font-medium ${activeTab === "history"
                                     ? "bg-zinc-800 text-white shadow-sm"
                                     : "text-zinc-500 hover:text-zinc-300"
                                     }`}
@@ -126,7 +132,7 @@ export default function Dashboard() {
 
                         <button
                             onClick={() => setShowSettings(true)}
-                            className="rounded-full bg-zinc-900 p-2.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all border border-zinc-800"
+                            className="rounded-full bg-zinc-900 p-2.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors border border-zinc-800"
                         >
                             <Settings2 className="h-5 w-5" />
                         </button>
@@ -138,7 +144,7 @@ export default function Dashboard() {
                     <nav className="flex w-full space-x-1 rounded-lg bg-zinc-900/50 p-1">
                         <button
                             onClick={() => setActiveTab("new")}
-                            className={`flex-1 flex items-center justify-center space-x-2 rounded-md py-1.5 text-sm font-medium transition-all ${activeTab === "new"
+                            className={`flex-1 flex items-center justify-center space-x-2 rounded-md py-1.5 text-sm font-medium ${activeTab === "new"
                                 ? "bg-zinc-800 text-white shadow-sm"
                                 : "text-zinc-500 hover:text-zinc-300"
                                 }`}
@@ -148,7 +154,7 @@ export default function Dashboard() {
                         </button>
                         <button
                             onClick={() => setActiveTab("history")}
-                            className={`flex-1 flex items-center justify-center space-x-2 rounded-md py-1.5 text-sm font-medium transition-all ${activeTab === "history"
+                            className={`flex-1 flex items-center justify-center space-x-2 rounded-md py-1.5 text-sm font-medium ${activeTab === "history"
                                 ? "bg-zinc-800 text-white shadow-sm"
                                 : "text-zinc-500 hover:text-zinc-300"
                                 }`}
@@ -209,7 +215,9 @@ export default function Dashboard() {
             {showSettings && (
                 <ChannelSettings
                     followedChannels={followedChannels}
+                    watchedIds={watchedIds}
                     onUpdateChannels={setFollowedChannels}
+                    onImportData={handleImportData}
                     onClose={() => setShowSettings(false)}
                 />
             )}

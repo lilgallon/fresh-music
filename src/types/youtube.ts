@@ -10,4 +10,6 @@ export interface YouTubeChannel {
   channelId: string;
   name: string;
   isMusicOnly: boolean;
+  thumbnail?: string;
+  description?: string;
 }

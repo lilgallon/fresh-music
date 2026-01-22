@@ -1,0 +1,177 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { X, Search, Plus, Trash2, Settings, Loader2 } from "lucide-react";
+import { YouTubeChannel } from "@/types/youtube";
+import { SearchResultChannel, searchChannels } from "@/lib/youtube";
+import Image from "next/image";
+
+interface ChannelSettingsProps {
+    followedChannels: YouTubeChannel[];
+    onUpdateChannels: (channels: YouTubeChannel[]) => void;
+    onClose: () => void;
+}
+
+export default function ChannelSettings({
+    followedChannels,
+    onUpdateChannels,
+    onClose,
+}: ChannelSettingsProps) {
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<SearchResultChannel[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+    const handleSearch = async () => {
+        if (!searchQuery.trim()) return;
+        setIsSearching(true);
+        const results = await searchChannels(searchQuery);
+        setSearchResults(results);
+        setIsSearching(false);
+    };
+
+    const addChannel = (result: SearchResultChannel) => {
+        if (followedChannels.some((c) => c.channelId === result.id)) return;
+
+        const newChannel: YouTubeChannel = {
+            channelId: result.id,
+            name: result.title,
+            isMusicOnly: true,
+            thumbnail: result.thumbnail,
+            description: result.description,
+        };
+
+        onUpdateChannels([...followedChannels, newChannel]);
+    };
+
+    const removeChannel = (channelId: string) => {
+        onUpdateChannels(followedChannels.filter((c) => c.channelId !== channelId));
+    };
+
+    // Filter out search results that are already followed
+    const filteredSearchResults = searchResults.filter(
+        (result) => !followedChannels.some((c) => c.channelId === result.id)
+    );
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200 overflow-x-hidden transition-all">
+            <div className="relative flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl animate-in zoom-in-95 duration-200 border border-zinc-800">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-zinc-800 p-6 flex-shrink-0">
+                    <div className="flex items-center space-x-2">
+                        <Settings className="h-5 w-5 text-zinc-400" />
+                        <h2 className="text-xl font-semibold text-white">Manage Channels</h2>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                    >
+                        <X className="h-6 w-6" />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-8">
+                    {/* Search Section */}
+                    <section className="space-y-4">
+                        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Follow New Channels</h3>
+                        <div className="flex space-x-2">
+                            <div className="relative flex-1 min-w-0">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Search for a channel..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                                    className="w-full rounded-lg bg-zinc-800/50 py-2.5 pl-10 pr-4 text-sm text-white border border-zinc-700 focus:border-zinc-500 focus:outline-none transition-colors"
+                                />
+                            </div>
+                            <button
+                                onClick={handleSearch}
+                                disabled={isSearching}
+                                className="shrink-0 rounded-lg bg-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50 transition-colors"
+                            >
+                                {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
+                            </button>
+                        </div>
+
+                        {/* Search Results */}
+                        {filteredSearchResults.length > 0 && (
+                            <div className="grid gap-2 animate-in slide-in-from-top-2 duration-200">
+                                {filteredSearchResults.map((result) => (
+                                    <div
+                                        key={result.id}
+                                        className="flex items-center justify-between gap-4 rounded-xl bg-zinc-800/30 p-3 border border-zinc-800 transition-colors hover:bg-zinc-800/50 overflow-hidden"
+                                    >
+                                        <div className="flex flex-1 items-center space-x-3 min-w-0">
+                                            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800">
+                                                <Image src={result.thumbnail} alt={result.title} fill className="object-cover" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-white truncate">{result.title}</p>
+                                                <p className="text-xs text-zinc-500 truncate">{result.description}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => addChannel(result)}
+                                            className="shrink-0 rounded-full bg-primary p-2 text-primary-foreground hover:bg-white transition-colors"
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+
+                    {/* Followed Section */}
+                    <section className="space-y-4">
+                        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Current Subscriptions</h3>
+                        <div className="grid gap-2">
+                            {followedChannels.length > 0 ? (
+                                followedChannels.map((channel) => (
+                                    <div
+                                        key={channel.channelId}
+                                        className="flex items-center justify-between gap-4 rounded-xl bg-zinc-800/50 p-3 border border-zinc-800 group transition-colors hover:bg-zinc-800/70 overflow-hidden"
+                                    >
+                                        <div className="flex flex-1 items-center space-x-3 min-w-0">
+                                            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 font-bold">
+                                                {channel.thumbnail ? (
+                                                    <Image src={channel.thumbnail} alt={channel.name} fill className="object-cover" />
+                                                ) : (
+                                                    <span>{channel.name.charAt(0)}</span>
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-white truncate">{channel.name}</p>
+                                                {channel.description && <p className="text-xs text-zinc-500 truncate">{channel.description}</p>}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => removeChannel(channel.channelId)}
+                                            className="shrink-0 rounded-full p-2 text-zinc-500 hover:bg-zinc-700/50 hover:text-red-400 transition-all sm:opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-sm text-zinc-600 italic">No channels followed yet. Search above to add some!</p>
+                            )}
+                        </div>
+                    </section>
+                </div>
+
+                {/* Footer */}
+                <div className="border-t border-zinc-800 bg-zinc-900/50 p-6 flex-shrink-0">
+                    <button
+                        onClick={onClose}
+                        className="w-full rounded-lg bg-zinc-800 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700 transition-colors"
+                    >
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}

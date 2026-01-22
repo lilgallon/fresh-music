@@ -6,6 +6,14 @@ A modern, minimalist dashboard to track music releases from your favorite YouTub
 
 ![settings](.github/assets/settings.png)
 
+## Features
+
+- **New Releases:** Automatically fetches the latest 5-10 videos from curated channels.
+- **Watch Tracking:** Mark videos as watched to move them to the History tab.
+- **Persistence:** Watched status is saved in your browser's LocalStorage.
+- **Clean Player:** Watch videos directly on the site via a minimalist modal.
+- **Mobile First:** Fully responsive design for all devices.
+
 ## Setup Instructions
 
 1.  **Get a YouTube Data API v3 Key:**
@@ -53,11 +61,3 @@ services:
     environment:
       - YOUTUBE_API_KEY=YOUR_API_KEY_HERE
 ```
-
-## Features
-
-- **New Releases:** Automatically fetches the latest 5-10 videos from curated channels.
-- **Watch Tracking:** Mark videos as watched to move them to the History tab.
-- **Persistence:** Watched status is saved in your browser's LocalStorage.
-- **Clean Player:** Watch videos directly on the site via a minimalist modal.
-- **Mobile First:** Fully responsive design for all devices.

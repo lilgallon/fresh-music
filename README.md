@@ -30,7 +30,7 @@ You can run the application using Docker. The image is optimized for production 
 
 Provide your API key at runtime using the `YOUTUBE_API_KEY` environment variable:
 ```bash
-docker run -p 3000:3000 -e YOUTUBE_API_KEY=YOUR_API_KEY_HERE fresh-music
+docker run -p 3000:3000 -e YOUTUBE_API_KEY=YOUR_API_KEY_HERE ghcr.io/lilgallon/fresh-music:latest
 ```
 
 ### Running with Docker Compose
@@ -38,7 +38,7 @@ docker run -p 3000:3000 -e YOUTUBE_API_KEY=YOUR_API_KEY_HERE fresh-music
 ```yaml
 services:
   fresh-music:
-    image: ghcr.io/lilgallon/fresh-music:main
+    image: ghcr.io/lilgallon/fresh-music:latest
     ports:
       - "3000:3000"
     environment:

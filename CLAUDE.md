@@ -14,17 +14,20 @@ There is no test suite. CI (`.github/workflows/ci.yml`) only runs `lint` + `buil
 
 ## Architecture
 
-This is a single-page Next.js 14 (App Router) app. The UI lives in one client component (`src/components/Dashboard.tsx`) which owns three pieces of state:
+This is a single-page Next.js 14 (App Router) app. The UI lives mostly in one client component (`src/components/Dashboard.tsx`) which owns the main application state:
 
 - `followedChannels` — the user's subscriptions
 - `watchedIds` — array of YouTube video IDs marked as watched
-- `videos` — derived from `fetchAllVideos(followedChannels)` whenever the channel list changes
+- `settings` — user preferences such as the video lookback window
+- `videos` — derived from `fetchAllVideos(followedChannels, settings.videoLookbackDays)` whenever the channel list or lookback setting changes
 
 The "New" vs "History" tabs are just a filter over `videos` based on `watchedIds`. There is no router-level navigation.
 
+`src/components/VideoModal.tsx` owns the player overlay interaction. The close button has intentionally been removed: clicking the bottom backdrop closes the modal, clicking the left backdrop marks the current video watched and navigates to the previous video, and clicking the right backdrop marks it watched and navigates to the next video. The left/right affordances show the target video's thumbnail/title; keep these hints in sync if changing the navigation behavior.
+
 ### Persistence — server SQLite + localStorage cache
 
-The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persists `channels` and `watched_videos`. `localStorage` is kept as an offline cache for instant first-paint and resilience when the API is unreachable.
+The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persists `channels`, `watched_videos`, and `app_settings`. `localStorage` is kept as an offline cache for instant first-paint and resilience when the API is unreachable.
 
 - Singleton DB connection: `src/lib/db.ts` (path from `DB_PATH` env, defaults to `./data/freshmusic.db`).
 - Repository (prepared statements): `src/lib/repository.ts`.
@@ -32,10 +35,15 @@ The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persis
 - REST routes (all `force-dynamic`):
   - `GET/PUT /api/channels`, `POST/DELETE /api/channels/[channelId]`
   - `GET/PUT /api/watched`, `POST/DELETE /api/watched/[videoId]`
+  - `GET/PUT /api/settings`
 
-**Hydration flow** in `Dashboard.tsx`: read localStorage immediately → fetch server → if server is empty, seed it (from cached LS, else from `src/config/channels.ts` defaults) → reconcile state. Mutations are optimistic with rollback on API failure. Don't bypass the wrapper — direct `localStorage.setItem` calls would desync the cache from the server.
+**Hydration flow** in `Dashboard.tsx`: read localStorage immediately → fetch server → if server is empty, seed channels (from cached LS, else from `src/config/channels.ts` defaults) → reconcile state. Mutations are optimistic with rollback on API failure. Don't bypass the wrapper — direct `localStorage.setItem` calls would desync the cache from the server.
 
 **Important when adding a route that touches the DB**: import from `@/lib/repository`, never instantiate `better-sqlite3` directly. The DB connection is a process-wide singleton.
+
+### Settings
+
+The video lookback window is stored as `videoLookbackDays` (default `30`, clamped to `1..365`) in `app_settings` under the repository key `video_lookback_days`. It is exposed through `GET/PUT /api/settings` and cached in localStorage by `src/lib/storage-client.ts`. The settings modal (`src/components/ChannelSettings.tsx`) currently offers preset windows from 7 days to 1 year.
 
 ### YouTube API key — dual source (important)
 
@@ -53,6 +61,10 @@ When changing how the key is sourced, update **both** the `NEXT_PUBLIC_` build-t
 ### YouTube fetch quirk
 
 `fetchLatestVideos` first tries the cheap trick of converting a channel ID `UC…` into its uploads playlist ID `UU…`. If that 404s it falls back to a real `channels?part=contentDetails` lookup. Errors are swallowed and return `[]` to keep the UI stable — don't refactor this to throw.
+
+The YouTube Data API does not expose a reliable `isShort`/`type=short` flag in the uploads playlist response. After date filtering, `fetchLatestVideos` calls `videos?part=contentDetails` and excludes videos with a duration of 60 seconds or less. If that metadata call fails, it returns the unfiltered list rather than breaking the dashboard.
+
+The lookback setting is applied by fetching up to 50 recent uploads per channel and filtering by `publishedAt >= now - videoLookbackDays`. If a channel publishes more than 50 videos inside the selected window, older videos in that window may not be present without adding pagination.
 
 ### Styling
 

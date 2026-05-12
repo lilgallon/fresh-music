@@ -8,10 +8,11 @@ A modern, minimalist dashboard to track music releases from your favorite YouTub
 
 ## Features
 
-- **New Releases:** Automatically fetches the latest 5-10 videos from curated channels.
+- **New Releases:** Automatically fetches recent uploads from your curated channels.
+- **Configurable Lookback:** Choose how far back Fresh Music should look for channel uploads, from 7 days to 1 year.
 - **Watch Tracking:** Mark videos as watched to move them to the History tab.
-- **Server-side Persistence:** Channels and watched videos are stored in a SQLite database on the server, so your data survives across browsers and devices. LocalStorage is kept as an offline cache for instant load.
-- **Clean Player:** Watch videos directly on the site via a minimalist modal.
+- **Server-side Persistence:** Channels, watched videos, and app settings are stored in a SQLite database on the server, so your data survives across browsers and devices. LocalStorage is kept as an offline cache for instant load.
+- **Clean Player:** Watch videos directly on the site via a minimalist modal with previous/next navigation, watched-state validation, and visual previews.
 - **Mobile First:** Fully responsive design for all devices.
 
 ## Get started
@@ -64,4 +65,3 @@ volumes:
 2.  **Run Locally:**
     - `npm install`
     - `npm run dev`
-

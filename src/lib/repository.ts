@@ -1,6 +1,14 @@
 import { getDb } from "./db";
 import { YouTubeChannel } from "@/types/youtube";
 
+export interface AppSettings {
+    videoLookbackDays: number;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+    videoLookbackDays: 30,
+};
+
 interface ChannelRow {
     channel_id: string;
     name: string;
@@ -100,4 +108,42 @@ export function replaceWatched(videoIds: string[]): void {
         for (const id of list) insert.run(id);
     });
     tx(videoIds);
+}
+
+function normalizeVideoLookbackDays(value: unknown): number {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(parsed)) return DEFAULT_SETTINGS.videoLookbackDays;
+    return Math.min(365, Math.max(1, Math.round(parsed)));
+}
+
+export function getSettings(): AppSettings {
+    const row = getDb()
+        .prepare<[string], { value: string }>("SELECT value FROM app_settings WHERE key = ?")
+        .get("video_lookback_days");
+
+    return {
+        videoLookbackDays: normalizeVideoLookbackDays(
+            row?.value ?? DEFAULT_SETTINGS.videoLookbackDays
+        ),
+    };
+}
+
+export function saveSettings(settings: Partial<AppSettings>): AppSettings {
+    const next = {
+        ...getSettings(),
+        ...settings,
+    };
+    next.videoLookbackDays = normalizeVideoLookbackDays(next.videoLookbackDays);
+
+    getDb()
+        .prepare(
+            `INSERT INTO app_settings (key, value, updated_at)
+             VALUES (?, ?, unixepoch())
+             ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_at = excluded.updated_at`
+        )
+        .run("video_lookback_days", String(next.videoLookbackDays));
+
+    return next;
 }

@@ -4,13 +4,16 @@ import { useState } from "react";
 import { X, Search, Plus, Trash2, Settings, Loader2, Download, Upload } from "lucide-react";
 import { YouTubeChannel } from "@/types/youtube";
 import { SearchResultChannel, searchChannels } from "@/lib/youtube";
+import { AppSettings } from "@/lib/storage-client";
 import Image from "next/image";
 
 interface ChannelSettingsProps {
     followedChannels: YouTubeChannel[];
     watchedIds: string[];
+    settings: AppSettings;
     onAddChannel: (channel: YouTubeChannel) => void | Promise<void>;
     onRemoveChannel: (channelId: string) => void | Promise<void>;
+    onUpdateSettings: (settings: AppSettings) => void | Promise<void>;
     onImportData: (channels: YouTubeChannel[], watchedIds: string[]) => void | Promise<void>;
     onClose: () => void;
 }
@@ -18,8 +21,10 @@ interface ChannelSettingsProps {
 export default function ChannelSettings({
     followedChannels,
     watchedIds,
+    settings,
     onAddChannel,
     onRemoveChannel,
+    onUpdateSettings,
     onImportData,
     onClose,
 }: ChannelSettingsProps) {
@@ -39,6 +44,7 @@ export default function ChannelSettings({
         const data = {
             followedChannels,
             watchedVideoIds: watchedIds,
+            settings,
             exportedAt: new Date().toISOString(),
             version: "1.0",
         };
@@ -68,6 +74,11 @@ export default function ChannelSettings({
                 }
 
                 if (confirm("This will overwrite your current settings. Continue?")) {
+                    if (data.settings?.videoLookbackDays) {
+                        onUpdateSettings({
+                            videoLookbackDays: Number(data.settings.videoLookbackDays),
+                        });
+                    }
                     onImportData(data.followedChannels, data.watchedVideoIds);
                 }
             } catch (err) {
@@ -142,6 +153,37 @@ export default function ChannelSettings({
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-8">
+                    {/* Fetch Window Section */}
+                    <section className="space-y-4">
+                        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Video Window</h3>
+                        <div className="rounded-xl border border-zinc-800 bg-zinc-800/30 p-4">
+                            <label htmlFor="video-lookback" className="block text-sm font-medium text-white">
+                                Fetch videos from the last
+                            </label>
+                            <div className="mt-3 flex items-center gap-3">
+                                <select
+                                    id="video-lookback"
+                                    value={settings.videoLookbackDays}
+                                    onChange={(e) =>
+                                        onUpdateSettings({
+                                            ...settings,
+                                            videoLookbackDays: Number(e.target.value),
+                                        })
+                                    }
+                                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-zinc-500"
+                                >
+                                    <option value={7}>7 days</option>
+                                    <option value={14}>14 days</option>
+                                    <option value={30}>30 days</option>
+                                    <option value={90}>90 days</option>
+                                    <option value={180}>180 days</option>
+                                    <option value={365}>1 year</option>
+                                </select>
+                                <span className="text-sm text-zinc-500">per channel</span>
+                            </div>
+                        </div>
+                    </section>
+
                     {/* Search Section */}
                     <section className="space-y-4">
                         <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Follow New Channels</h3>

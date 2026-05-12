@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS watched_videos (
   video_id   TEXT PRIMARY KEY,
   watched_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
 `;
 
 let instance: Database.Database | null = null;

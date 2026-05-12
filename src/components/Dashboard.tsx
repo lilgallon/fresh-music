@@ -7,16 +7,22 @@ import { fetchAllVideos, fetchChannelsInfo } from "@/lib/youtube";
 import {
     readChannelsCache,
     readWatchedCache,
+    readSettingsCache,
     writeChannelsCache,
     writeWatchedCache,
+    writeSettingsCache,
     fetchChannels,
     fetchWatched,
+    fetchSettings,
     putChannels,
     putWatched,
+    putSettings,
     upsertChannel,
     deleteChannel as apiDeleteChannel,
     postWatched,
     deleteWatched,
+    DEFAULT_SETTINGS,
+    AppSettings,
 } from "@/lib/storage-client";
 import VideoCard from "./VideoCard";
 import VideoModal from "./VideoModal";
@@ -31,20 +37,24 @@ export default function Dashboard() {
     const [activeTab, setActiveTab] = useState<"new" | "history">("new");
     const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
     const [showSettings, setShowSettings] = useState(false);
+    const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
     const hydratedRef = useRef(false);
 
     // Initial hydration: localStorage first (instant render), then reconcile with server
     useEffect(() => {
         const cachedChannels = readChannelsCache();
         const cachedWatched = readWatchedCache();
+        const cachedSettings = readSettingsCache();
         if (cachedChannels) setFollowedChannels(cachedChannels);
         if (cachedWatched) setWatchedIds(cachedWatched);
+        if (cachedSettings) setSettings(cachedSettings);
 
         (async () => {
             try {
-                const [serverChannels, serverWatched] = await Promise.all([
+                const [serverChannels, serverWatched, serverSettings] = await Promise.all([
                     fetchChannels(),
                     fetchWatched(),
+                    fetchSettings(),
                 ]);
 
                 let finalChannels = serverChannels;
@@ -63,8 +73,10 @@ export default function Dashboard() {
 
                 setFollowedChannels(finalChannels);
                 setWatchedIds(finalWatched);
+                setSettings(serverSettings);
                 writeChannelsCache(finalChannels);
                 writeWatchedCache(finalWatched);
+                writeSettingsCache(serverSettings);
             } catch (err) {
                 console.error("Failed to sync with server, using local cache:", err);
             } finally {
@@ -80,6 +92,9 @@ export default function Dashboard() {
     useEffect(() => {
         if (hydratedRef.current) writeWatchedCache(watchedIds);
     }, [watchedIds]);
+    useEffect(() => {
+        if (hydratedRef.current) writeSettingsCache(settings);
+    }, [settings]);
 
     // Enrich channels missing thumbnail/description and persist the enrichment server-side
     useEffect(() => {
@@ -120,10 +135,10 @@ export default function Dashboard() {
             return;
         }
         setLoading(true);
-        const data = await fetchAllVideos(followedChannels);
+        const data = await fetchAllVideos(followedChannels, settings.videoLookbackDays);
         setVideos(data);
         setLoading(false);
-    }, [followedChannels]);
+    }, [followedChannels, settings.videoLookbackDays]);
 
     useEffect(() => {
         loadVideos();
@@ -178,6 +193,18 @@ export default function Dashboard() {
             alert("Import partially failed — see console for details.");
         }
         setShowSettings(false);
+    };
+
+    const updateSettings = async (nextSettings: AppSettings) => {
+        const previousSettings = settings;
+        setSettings(nextSettings);
+        try {
+            const savedSettings = await putSettings(nextSettings);
+            setSettings(savedSettings);
+        } catch (err) {
+            console.error("Failed to update settings, rolling back:", err);
+            setSettings(previousSettings);
+        }
     };
 
     const filteredVideos = videos.filter((v) =>
@@ -306,8 +333,10 @@ export default function Dashboard() {
                 <ChannelSettings
                     followedChannels={followedChannels}
                     watchedIds={watchedIds}
+                    settings={settings}
                     onAddChannel={addChannel}
                     onRemoveChannel={removeChannel}
+                    onUpdateSettings={updateSettings}
                     onImportData={handleImportData}
                     onClose={() => setShowSettings(false)}
                 />

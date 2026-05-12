@@ -24,7 +24,13 @@ async function getApiKey(): Promise<string> {
     return configPromise;
 }
 
-export async function fetchLatestVideos(channelId: string, limit: number = 5): Promise<YouTubeVideo[]> {
+function getCutoffDate(lookbackDays: number): Date {
+    const date = new Date();
+    date.setDate(date.getDate() - lookbackDays);
+    return date;
+}
+
+export async function fetchLatestVideos(channelId: string, lookbackDays: number = 30): Promise<YouTubeVideo[]> {
     const apiKey = await getApiKey();
     if (!apiKey) {
         console.error("YouTube API Key is missing");
@@ -32,6 +38,9 @@ export async function fetchLatestVideos(channelId: string, limit: number = 5): P
     }
 
     try {
+        const cutoffDate = getCutoffDate(lookbackDays);
+        const maxResults = 50;
+
         // 1. Get the uploads playlist ID (replace 'UC' with 'UU' in channel ID)
         // Most channels follow this pattern: UC... -> UU...
         const uploadsPlaylistId = channelId.startsWith("UC")
@@ -40,7 +49,7 @@ export async function fetchLatestVideos(channelId: string, limit: number = 5): P
 
         // 2. Fetch latest videos from the playlist
         const response = await fetch(
-            `${BASE_URL}/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=${limit}&key=${apiKey}`
+            `${BASE_URL}/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=${maxResults}&key=${apiKey}`
         );
 
         if (!response.ok) {
@@ -56,11 +65,11 @@ export async function fetchLatestVideos(channelId: string, limit: number = 5): P
 
                     if (realUploadsId) {
                         const retryResponse = await fetch(
-                            `${BASE_URL}/playlistItems?part=snippet&playlistId=${realUploadsId}&maxResults=${limit}&key=${apiKey}`
+                            `${BASE_URL}/playlistItems?part=snippet&playlistId=${realUploadsId}&maxResults=${maxResults}&key=${apiKey}`
                         );
                         if (retryResponse.ok) {
                             const retryData = await retryResponse.json();
-                            return mapPlaylistItems(retryData.items);
+                            return filterVideosByDate(mapPlaylistItems(retryData.items), cutoffDate);
                         }
                     }
                 }
@@ -72,7 +81,7 @@ export async function fetchLatestVideos(channelId: string, limit: number = 5): P
         }
 
         const data = await response.json();
-        return mapPlaylistItems(data.items);
+        return filterVideosByDate(mapPlaylistItems(data.items), cutoffDate);
     } catch (error) {
         console.error(`Error fetching videos for channel ${channelId}:`, error);
         return [];
@@ -102,8 +111,12 @@ function mapPlaylistItems(items: YouTubePlaylistItem[]): YouTubeVideo[] {
     }));
 }
 
-export async function fetchAllVideos(channels: { channelId: string }[]): Promise<YouTubeVideo[]> {
-    const allVideosPromises = channels.map((channel) => fetchLatestVideos(channel.channelId));
+function filterVideosByDate(videos: YouTubeVideo[], cutoffDate: Date): YouTubeVideo[] {
+    return videos.filter((video) => new Date(video.publishedAt) >= cutoffDate);
+}
+
+export async function fetchAllVideos(channels: { channelId: string }[], lookbackDays: number = 30): Promise<YouTubeVideo[]> {
+    const allVideosPromises = channels.map((channel) => fetchLatestVideos(channel.channelId, lookbackDays));
     const results = await Promise.all(allVideosPromises);
 
     // Flatten, sort by date (newest first), and return

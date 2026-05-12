@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Native build deps for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
 RUN npm ci --legacy-peer-deps
@@ -36,6 +39,11 @@ RUN adduser --system --uid 1001 nextjs
 # Copy necessary files from builder
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Persistent data directory (mount a volume here to persist the SQLite database)
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+VOLUME ["/app/data"]
+ENV DB_PATH=/app/data/freshmusic.db
 
 USER nextjs
 

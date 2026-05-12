@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
+    experimental: {
+        // Required so the better-sqlite3 native binding is copied to .next/standalone
+        // and not bundled by webpack.
+        serverComponentsExternalPackages: ['better-sqlite3'],
+    },
     images: {
         remotePatterns: [
             {

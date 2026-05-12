@@ -10,7 +10,7 @@ A modern, minimalist dashboard to track music releases from your favorite YouTub
 
 - **New Releases:** Automatically fetches the latest 5-10 videos from curated channels.
 - **Watch Tracking:** Mark videos as watched to move them to the History tab.
-- **Persistence:** Watched status is saved in your browser's LocalStorage.
+- **Server-side Persistence:** Channels and watched videos are stored in a SQLite database on the server, so your data survives across browsers and devices. LocalStorage is kept as an offline cache for instant load.
 - **Clean Player:** Watch videos directly on the site via a minimalist modal.
 - **Mobile First:** Fully responsive design for all devices.
 
@@ -28,9 +28,12 @@ You can run the application using Docker. The image is optimized for production 
 
 ### Running with Docker
 
-Provide your API key at runtime using the `YOUTUBE_API_KEY` environment variable:
+Provide your API key at runtime using the `YOUTUBE_API_KEY` environment variable, and mount a volume on `/app/data` to persist the SQLite database across container restarts:
 ```bash
-docker run -p 3000:3000 -e YOUTUBE_API_KEY=YOUR_API_KEY_HERE ghcr.io/lilgallon/fresh-music:latest
+docker run -p 3000:3000 \
+  -e YOUTUBE_API_KEY=YOUR_API_KEY_HERE \
+  -v fresh-music-data:/app/data \
+  ghcr.io/lilgallon/fresh-music:latest
 ```
 
 ### Running with Docker Compose
@@ -43,6 +46,11 @@ services:
       - "3000:3000"
     environment:
       - YOUTUBE_API_KEY=YOUR_API_KEY_HERE
+    volumes:
+      - fresh-music-data:/app/data
+
+volumes:
+  fresh-music-data:
 ```
 
 ## Dev setup Instructions

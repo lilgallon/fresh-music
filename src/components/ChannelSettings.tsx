@@ -9,15 +9,17 @@ import Image from "next/image";
 interface ChannelSettingsProps {
     followedChannels: YouTubeChannel[];
     watchedIds: string[];
-    onUpdateChannels: (channels: YouTubeChannel[]) => void;
-    onImportData: (channels: YouTubeChannel[], watchedIds: string[]) => void;
+    onAddChannel: (channel: YouTubeChannel) => void | Promise<void>;
+    onRemoveChannel: (channelId: string) => void | Promise<void>;
+    onImportData: (channels: YouTubeChannel[], watchedIds: string[]) => void | Promise<void>;
     onClose: () => void;
 }
 
 export default function ChannelSettings({
     followedChannels,
     watchedIds,
-    onUpdateChannels,
+    onAddChannel,
+    onRemoveChannel,
     onImportData,
     onClose,
 }: ChannelSettingsProps) {
@@ -87,11 +89,11 @@ export default function ChannelSettings({
             description: result.description,
         };
 
-        onUpdateChannels([...followedChannels, newChannel]);
+        onAddChannel(newChannel);
     };
 
     const removeChannel = (channelId: string) => {
-        onUpdateChannels(followedChannels.filter((c) => c.channelId !== channelId));
+        onRemoveChannel(channelId);
     };
 
     // Filter out search results that are already followed

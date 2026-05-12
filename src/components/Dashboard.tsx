@@ -1,9 +1,23 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { YouTubeVideo, YouTubeChannel } from "@/types/youtube";
 import { channels as defaultChannels } from "@/config/channels";
 import { fetchAllVideos, fetchChannelsInfo } from "@/lib/youtube";
+import {
+    readChannelsCache,
+    readWatchedCache,
+    writeChannelsCache,
+    writeWatchedCache,
+    fetchChannels,
+    fetchWatched,
+    putChannels,
+    putWatched,
+    upsertChannel,
+    deleteChannel as apiDeleteChannel,
+    postWatched,
+    deleteWatched,
+} from "@/lib/storage-client";
 import VideoCard from "./VideoCard";
 import VideoModal from "./VideoModal";
 import ChannelSettings from "./ChannelSettings";
@@ -17,49 +31,86 @@ export default function Dashboard() {
     const [activeTab, setActiveTab] = useState<"new" | "history">("new");
     const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
     const [showSettings, setShowSettings] = useState(false);
+    const hydratedRef = useRef(false);
 
-    // Load state from localStorage
+    // Initial hydration: localStorage first (instant render), then reconcile with server
     useEffect(() => {
-        const storedChannels = localStorage.getItem("followedChannels");
-        if (storedChannels) {
-            setFollowedChannels(JSON.parse(storedChannels));
-        } else {
-            setFollowedChannels(defaultChannels);
-        }
+        const cachedChannels = readChannelsCache();
+        const cachedWatched = readWatchedCache();
+        if (cachedChannels) setFollowedChannels(cachedChannels);
+        if (cachedWatched) setWatchedIds(cachedWatched);
 
-        const storedWatched = localStorage.getItem("watchedVideoIds");
-        if (storedWatched) {
-            setWatchedIds(JSON.parse(storedWatched));
-        }
+        (async () => {
+            try {
+                const [serverChannels, serverWatched] = await Promise.all([
+                    fetchChannels(),
+                    fetchWatched(),
+                ]);
+
+                let finalChannels = serverChannels;
+                let finalWatched = serverWatched;
+
+                // Server is empty: seed it (from cached LS or from default config)
+                if (serverChannels.length === 0) {
+                    const seed = cachedChannels && cachedChannels.length > 0
+                        ? cachedChannels
+                        : defaultChannels;
+                    finalChannels = await putChannels(seed);
+                }
+                if (serverWatched.length === 0 && cachedWatched && cachedWatched.length > 0) {
+                    finalWatched = await putWatched(cachedWatched);
+                }
+
+                setFollowedChannels(finalChannels);
+                setWatchedIds(finalWatched);
+                writeChannelsCache(finalChannels);
+                writeWatchedCache(finalWatched);
+            } catch (err) {
+                console.error("Failed to sync with server, using local cache:", err);
+            } finally {
+                hydratedRef.current = true;
+            }
+        })();
     }, []);
 
-    // Enrich channels with missing metadata (thumbnail/description)
+    // Mirror state into localStorage cache once we are hydrated
     useEffect(() => {
+        if (hydratedRef.current) writeChannelsCache(followedChannels);
+    }, [followedChannels]);
+    useEffect(() => {
+        if (hydratedRef.current) writeWatchedCache(watchedIds);
+    }, [watchedIds]);
+
+    // Enrich channels missing thumbnail/description and persist the enrichment server-side
+    useEffect(() => {
+        if (!hydratedRef.current) return;
         const enrichMetadata = async () => {
             const missingMetaIds = followedChannels
-                .filter(c => !c.thumbnail || !c.description)
-                .map(c => c.channelId);
+                .filter((c) => !c.thumbnail || !c.description)
+                .map((c) => c.channelId);
 
-            if (missingMetaIds.length > 0) {
-                const enrichedData = await fetchChannelsInfo(missingMetaIds);
-                if (enrichedData.length > 0) {
-                    setFollowedChannels(prev => prev.map(channel => {
-                        const match = enrichedData.find(e => e.channelId === channel.channelId);
-                        return match ? { ...channel, ...match } : channel;
-                    }));
+            if (missingMetaIds.length === 0) return;
+
+            const enrichedData = await fetchChannelsInfo(missingMetaIds);
+            if (enrichedData.length === 0) return;
+
+            const merged: YouTubeChannel[] = followedChannels.map((channel) => {
+                const match = enrichedData.find((e) => e.channelId === channel.channelId);
+                return match ? { ...channel, ...match } : channel;
+            });
+            setFollowedChannels(merged);
+
+            // Persist each enriched channel server-side
+            for (const channel of merged) {
+                if (missingMetaIds.includes(channel.channelId)) {
+                    upsertChannel(channel).catch((err) =>
+                        console.error(`Failed to persist enriched channel ${channel.channelId}:`, err)
+                    );
                 }
             }
         };
-
-        if (followedChannels.length > 0) {
-            enrichMetadata();
-            localStorage.setItem("followedChannels", JSON.stringify(followedChannels));
-        }
+        enrichMetadata();
     }, [followedChannels]);
-
-    useEffect(() => {
-        localStorage.setItem("watchedVideoIds", JSON.stringify(watchedIds));
-    }, [watchedIds]);
 
     // Fetch videos when channels change
     const loadVideos = useCallback(async () => {
@@ -79,14 +130,53 @@ export default function Dashboard() {
     }, [loadVideos]);
 
     const toggleWatched = (id: string) => {
+        const willBeWatched = !watchedIds.includes(id);
         setWatchedIds((prev) =>
-            prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+            willBeWatched ? [...prev, id] : prev.filter((i) => i !== id)
         );
+        const op = willBeWatched ? postWatched(id) : deleteWatched(id);
+        op.catch((err) => {
+            console.error(`Failed to sync watched state for ${id}, rolling back:`, err);
+            setWatchedIds((prev) =>
+                willBeWatched ? prev.filter((i) => i !== id) : [...prev, id]
+            );
+        });
     };
 
-    const handleImportData = (channels: YouTubeChannel[], watched: string[]) => {
-        setFollowedChannels(channels);
-        setWatchedIds(watched);
+    const addChannel = async (channel: YouTubeChannel) => {
+        if (followedChannels.some((c) => c.channelId === channel.channelId)) return;
+        setFollowedChannels((prev) => [...prev, channel]);
+        try {
+            await upsertChannel(channel);
+        } catch (err) {
+            console.error(`Failed to add channel ${channel.channelId}, rolling back:`, err);
+            setFollowedChannels((prev) => prev.filter((c) => c.channelId !== channel.channelId));
+        }
+    };
+
+    const removeChannel = async (channelId: string) => {
+        const previous = followedChannels;
+        setFollowedChannels((prev) => prev.filter((c) => c.channelId !== channelId));
+        try {
+            await apiDeleteChannel(channelId);
+        } catch (err) {
+            console.error(`Failed to remove channel ${channelId}, rolling back:`, err);
+            setFollowedChannels(previous);
+        }
+    };
+
+    const handleImportData = async (channels: YouTubeChannel[], watched: string[]) => {
+        try {
+            const [savedChannels, savedWatched] = await Promise.all([
+                putChannels(channels),
+                putWatched(watched),
+            ]);
+            setFollowedChannels(savedChannels);
+            setWatchedIds(savedWatched);
+        } catch (err) {
+            console.error("Failed to import data:", err);
+            alert("Import partially failed — see console for details.");
+        }
         setShowSettings(false);
     };
 
@@ -216,7 +306,8 @@ export default function Dashboard() {
                 <ChannelSettings
                     followedChannels={followedChannels}
                     watchedIds={watchedIds}
-                    onUpdateChannels={setFollowedChannels}
+                    onAddChannel={addChannel}
+                    onRemoveChannel={removeChannel}
                     onImportData={handleImportData}
                     onClose={() => setShowSettings(false)}
                 />

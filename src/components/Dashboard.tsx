@@ -211,6 +211,42 @@ export default function Dashboard() {
         activeTab === "new" ? !watchedIds.includes(v.id) : watchedIds.includes(v.id)
     );
 
+    const selectedVideoIndex = selectedVideo
+        ? filteredVideos.findIndex((video) => video.id === selectedVideo.id)
+        : -1;
+    const previousVideo =
+        selectedVideoIndex === -1 || filteredVideos.length === 0
+            ? null
+            : filteredVideos[(selectedVideoIndex - 1 + filteredVideos.length) % filteredVideos.length];
+    const nextVideo =
+        selectedVideoIndex === -1 || filteredVideos.length === 0
+            ? null
+            : filteredVideos[(selectedVideoIndex + 1) % filteredVideos.length];
+
+    const markWatchedIfNeeded = useCallback((id: string) => {
+        if (watchedIds.includes(id)) return;
+
+        setWatchedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+        postWatched(id).catch((err) => {
+            console.error(`Failed to sync watched state for ${id}, rolling back:`, err);
+            setWatchedIds((prev) => prev.filter((watchedId) => watchedId !== id));
+        });
+    }, [watchedIds]);
+
+    const showAdjacentVideo = useCallback((direction: "previous" | "next") => {
+        if (!selectedVideo || filteredVideos.length === 0) return;
+
+        markWatchedIfNeeded(selectedVideo.id);
+
+        const currentIndex = filteredVideos.findIndex((video) => video.id === selectedVideo.id);
+        const offset = direction === "previous" ? -1 : 1;
+        const nextIndex =
+            currentIndex === -1
+                ? 0
+                : (currentIndex + offset + filteredVideos.length) % filteredVideos.length;
+        setSelectedVideo(filteredVideos[nextIndex]);
+    }, [filteredVideos, markWatchedIfNeeded, selectedVideo]);
+
     return (
         <div className="min-h-screen bg-background text-foreground selection:bg-zinc-800">
             {/* Header */}
@@ -326,7 +362,12 @@ export default function Dashboard() {
             {/* Modals */}
             <VideoModal
                 video={selectedVideo}
+                previousVideo={previousVideo}
+                nextVideo={nextVideo}
                 onClose={() => setSelectedVideo(null)}
+                onPrevious={() => showAdjacentVideo("previous")}
+                onNext={() => showAdjacentVideo("next")}
+                hasAdjacentVideo={filteredVideos.length > 1}
             />
 
             {showSettings && (

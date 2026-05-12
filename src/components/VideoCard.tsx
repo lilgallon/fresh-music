@@ -11,11 +11,11 @@ interface VideoCardProps {
 
 export default function VideoCard({ video, isWatched, onToggleWatched, onClick }: VideoCardProps) {
     return (
-        <div className="group relative flex flex-col space-y-3 rounded-xl border border-border bg-card p-3 hover:border-zinc-700 hover:bg-zinc-900/50 transition-colors">
-            <div
-                className="relative aspect-video overflow-hidden rounded-lg cursor-pointer bg-zinc-800"
-                onClick={() => onClick(video)}
-            >
+        <div
+            className="group relative flex cursor-pointer flex-col space-y-3 rounded-xl border border-border bg-card p-3 transition-colors hover:border-zinc-700 hover:bg-zinc-900/50"
+            onClick={() => onClick(video)}
+        >
+            <div className="relative aspect-video overflow-hidden rounded-lg bg-zinc-800">
                 <Image
                     src={video.thumbnail}
                     alt={video.title}
@@ -30,10 +30,7 @@ export default function VideoCard({ video, isWatched, onToggleWatched, onClick }
 
             <div className="flex flex-1 flex-col justify-between space-y-2">
                 <div className="min-w-0">
-                    <h3
-                        className="line-clamp-2 cursor-pointer text-sm font-medium leading-tight text-foreground hover:text-zinc-300 transition-colors"
-                        onClick={() => onClick(video)}
-                    >
+                    <h3 className="line-clamp-2 text-sm font-medium leading-tight text-foreground transition-colors group-hover:text-zinc-300">
                         {video.title}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground truncate">{video.channelTitle}</p>
@@ -47,7 +44,10 @@ export default function VideoCard({ video, isWatched, onToggleWatched, onClick }
                         })}
                     </span>
                     <button
-                        onClick={() => onToggleWatched(video.id)}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onToggleWatched(video.id);
+                        }}
                         className={`flex items-center space-x-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${isWatched
                             ? "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
                             : "bg-primary text-primary-foreground hover:bg-zinc-200"

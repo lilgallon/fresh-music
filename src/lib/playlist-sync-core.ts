@@ -115,7 +115,7 @@ async function classifySyncError(
             }
             return {
                 status: "playlist_missing",
-                error: getErrorMessage(error),
+                error: "The Fresh Music playlist could not be found on YouTube.",
                 shouldThrow: true,
             };
         } catch {

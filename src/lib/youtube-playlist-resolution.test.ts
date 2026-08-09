@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveFreshMusicPlaylist } from "./youtube-playlist-resolution";
+import {
+    findExistingFreshMusicPlaylist,
+    resolveFreshMusicPlaylist,
+} from "./youtube-playlist-resolution";
 
 const title = "Fresh Music — Nouveautés";
 
@@ -44,5 +47,14 @@ describe("Fresh Music playlist resolution", () => {
 
         expect(result).toEqual({ playlist: { id: "created", title }, source: "created" });
         expect(youtube.createPrivatePlaylist).toHaveBeenCalledOnce();
+    });
+
+    it("can check for recovery without creating a missing playlist", async () => {
+        const youtube = gateway({ preferred: null, existing: null });
+
+        const result = await findExistingFreshMusicPlaylist(youtube, "token", title, "missing");
+
+        expect(result).toBeNull();
+        expect(youtube.createPrivatePlaylist).not.toHaveBeenCalled();
     });
 });

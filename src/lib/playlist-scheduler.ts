@@ -11,12 +11,14 @@ declare global {
 async function scheduledSync(): Promise<void> {
     const integration = getYouTubeIntegration();
     if (!integration?.encryptedRefreshToken || !integration.playlistId) return;
-    if (
-        integration.lastSyncStatus === "reauthorization_required"
-        || integration.lastSyncStatus === "playlist_missing"
-    ) return;
+    if (integration.lastSyncStatus === "reauthorization_required") return;
 
     try {
+        if (integration.lastSyncStatus === "playlist_missing") {
+            const { recoverExistingYouTubePlaylist } = await import("./youtube-integration-service");
+            await recoverExistingYouTubePlaylist();
+            return;
+        }
         await synchronizeYouTubePlaylist();
     } catch (error) {
         console.error("Scheduled YouTube playlist sync failed:", error);

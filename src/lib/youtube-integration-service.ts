@@ -17,7 +17,10 @@ import {
 } from "./youtube-oauth";
 import { FRESH_MUSIC_PLAYLIST_TITLE, youtubeGateway } from "./youtube-api-server";
 import { synchronizeYouTubePlaylist } from "./playlist-sync";
-import { resolveFreshMusicPlaylist } from "./youtube-playlist-resolution";
+import {
+    findExistingFreshMusicPlaylist,
+    resolveFreshMusicPlaylist,
+} from "./youtube-playlist-resolution";
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
 
 function toIso(timestamp: number | null): string | null {
@@ -98,6 +101,25 @@ export async function recreateYouTubePlaylist(): Promise<void> {
     saveYouTubePlaylist(resolution.playlist.id, resolution.playlist.title);
     if (resolution.source !== "preferred") resetYouTubePlaylistEntries();
     await synchronizeYouTubePlaylist();
+}
+
+export async function recoverExistingYouTubePlaylist(): Promise<boolean> {
+    const integration = getYouTubeIntegration();
+    if (!integration?.encryptedRefreshToken) return false;
+
+    const accessToken = await getYouTubeAccessToken();
+    const resolution = await findExistingFreshMusicPlaylist(
+        youtubeGateway,
+        accessToken,
+        FRESH_MUSIC_PLAYLIST_TITLE,
+        integration.playlistId
+    );
+    if (!resolution) return false;
+
+    saveYouTubePlaylist(resolution.playlist.id, resolution.playlist.title);
+    if (resolution.source !== "preferred") resetYouTubePlaylistEntries();
+    await synchronizeYouTubePlaylist();
+    return true;
 }
 
 export async function disconnectYouTubeAccount(): Promise<void> {

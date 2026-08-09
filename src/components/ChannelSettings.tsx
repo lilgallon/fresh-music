@@ -452,100 +452,95 @@ export default function ChannelSettings({
                     </section>
                     </div>
 
-                    <div className="grid items-start gap-8 lg:grid-cols-2">
-                    {/* Search Section */}
                     <section className="space-y-4">
-                        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Follow New Channels</h3>
-                        <div className="flex space-x-2">
-                            <div className="relative flex-1 min-w-0">
-                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                                <input
-                                    type="text"
-                                    placeholder="Search for a channel..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                                    className="w-full rounded-lg bg-zinc-800/50 py-2.5 pl-10 pr-4 text-sm text-white border border-zinc-700 focus:border-zinc-500 focus:outline-none transition-colors"
-                                />
-                            </div>
-                            <button
-                                onClick={handleSearch}
-                                disabled={isSearching}
-                                className="shrink-0 rounded-lg bg-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50 transition-colors"
-                            >
-                                {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
-                            </button>
-                        </div>
-                        {searchError && <p className="text-xs text-red-400">{searchError}</p>}
-
-                        {/* Search Results */}
-                        {filteredSearchResults.length > 0 && (
-                            <div className="grid gap-2 animate-in slide-in-from-top-2 duration-200">
-                                {filteredSearchResults.map((result) => (
-                                    <div
-                                        key={result.id}
-                                        className="flex items-center justify-between gap-4 rounded-xl bg-zinc-800/30 p-3 border border-zinc-800 transition-colors hover:bg-zinc-800/50 overflow-hidden"
-                                    >
-                                        <div className="flex flex-1 items-center space-x-3 min-w-0">
-                                            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800">
-                                                <Image src={result.thumbnail} alt={result.title} fill className="object-cover" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-white truncate">{result.title}</p>
-                                                <p className="text-xs text-zinc-500 truncate">{result.description}</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => void addChannel(result)}
-                                            aria-label={`Follow ${result.title}`}
-                                            className="shrink-0 rounded-full bg-primary p-2 text-primary-foreground hover:bg-white transition-colors"
-                                        >
-                                            <Plus className="h-4 w-4" />
-                                        </button>
+                        <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">Channels</h3>
+                        <div className="space-y-6 rounded-xl border border-zinc-800 bg-zinc-800/30 p-5">
+                            <div className="space-y-3">
+                                <div>
+                                    <h4 className="text-sm font-medium text-white">Follow New Channels</h4>
+                                    <p className="mt-1 text-xs text-zinc-500">Search YouTube and add a channel to your local catalogue.</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <div className="relative min-w-0 flex-1">
+                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search for a channel..."
+                                            value={searchQuery}
+                                            onChange={(event) => setSearchQuery(event.target.value)}
+                                            onKeyDown={(event) => event.key === "Enter" && handleSearch()}
+                                            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 py-2.5 pl-10 pr-4 text-sm text-white transition-colors focus:border-zinc-500 focus:outline-none"
+                                        />
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </section>
-
-                    {/* Followed Section */}
-                    <section className="space-y-4">
-                        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Current Subscriptions</h3>
-                        <div className="grid gap-2">
-                            {followedChannels.length > 0 ? (
-                                followedChannels.map((channel) => (
-                                    <div
-                                        key={channel.channelId}
-                                        className="flex items-center justify-between gap-4 rounded-xl bg-zinc-800/50 p-3 border border-zinc-800 group transition-colors hover:bg-zinc-800/70 overflow-hidden"
+                                    <button
+                                        type="button"
+                                        onClick={handleSearch}
+                                        disabled={isSearching}
+                                        className="shrink-0 rounded-lg bg-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 transition-colors hover:bg-white disabled:opacity-50"
                                     >
-                                        <div className="flex flex-1 items-center space-x-3 min-w-0">
-                                            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 font-bold">
-                                                {channel.thumbnail ? (
-                                                    <Image src={channel.thumbnail} alt={channel.name} fill className="object-cover" />
-                                                ) : (
-                                                    <span>{channel.name.charAt(0)}</span>
-                                                )}
+                                        {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
+                                    </button>
+                                </div>
+                                {searchError && <p className="text-xs text-red-400">{searchError}</p>}
+
+                                {filteredSearchResults.length > 0 && (
+                                    <div className="grid animate-in gap-2 duration-200 slide-in-from-top-2 sm:grid-cols-2 xl:grid-cols-3">
+                                        {filteredSearchResults.map((result) => (
+                                            <div key={result.id} className="flex items-center justify-between gap-4 overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-900/70 p-3 transition-colors hover:border-zinc-600">
+                                                <div className="flex min-w-0 flex-1 items-center gap-3">
+                                                    <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800">
+                                                        <Image src={result.thumbnail} alt={result.title} fill className="object-cover" />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-medium text-white">{result.title}</p>
+                                                        <p className="truncate text-xs text-zinc-500">{result.description}</p>
+                                                    </div>
+                                                </div>
+                                                <button type="button" onClick={() => void addChannel(result)} aria-label={`Follow ${result.title}`}
+                                                    className="shrink-0 rounded-full bg-primary p-2 text-primary-foreground transition-colors hover:bg-white">
+                                                    <Plus className="h-4 w-4" />
+                                                </button>
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-white truncate">{channel.name}</p>
-                                                {channel.description && <p className="text-xs text-zinc-500 truncate">{channel.description}</p>}
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => void removeChannel(channel.channelId)}
-                                            aria-label={`Stop following ${channel.name}`}
-                                            className="shrink-0 rounded-full p-2 text-zinc-500 hover:bg-zinc-700/50 hover:text-red-400 transition-all sm:opacity-0 group-hover:opacity-100 focus:opacity-100"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
+                                        ))}
                                     </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-zinc-600 italic">No channels followed yet. Search above to add some!</p>
-                            )}
+                                )}
+                            </div>
+
+                            <div className="space-y-3 border-t border-zinc-800 pt-5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <h4 className="text-sm font-medium text-white">Current Subscriptions</h4>
+                                    <span className="rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400">{followedChannels.length}</span>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                    {followedChannels.length > 0 ? (
+                                        followedChannels.map((channel) => (
+                                            <div key={channel.channelId} className="group flex items-center justify-between gap-4 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 transition-colors hover:border-zinc-700 hover:bg-zinc-900">
+                                                <div className="flex min-w-0 flex-1 items-center gap-3">
+                                                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-800 font-bold text-zinc-400">
+                                                        {channel.thumbnail ? (
+                                                            <Image src={channel.thumbnail} alt={channel.name} fill className="object-cover" />
+                                                        ) : (
+                                                            <span>{channel.name.charAt(0)}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-medium text-white">{channel.name}</p>
+                                                        {channel.description && <p className="truncate text-xs text-zinc-500">{channel.description}</p>}
+                                                    </div>
+                                                </div>
+                                                <button type="button" onClick={() => void removeChannel(channel.channelId)} aria-label={`Stop following ${channel.name}`}
+                                                    className="shrink-0 rounded-full p-2 text-zinc-500 transition-all hover:bg-zinc-700/50 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100">
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-sm italic text-zinc-600">No channels followed yet. Search above to add some!</p>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </section>
-                    </div>
 
                     <section className="space-y-4">
                         <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">Data &amp; Backup</h3>

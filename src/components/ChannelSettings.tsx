@@ -219,6 +219,202 @@ export default function ChannelSettings({
                     </section>
 
                     <section className="space-y-4">
+                        <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">Channels</h3>
+                        <div className="space-y-6 rounded-xl border border-zinc-800 bg-zinc-800/30 p-5">
+                            <div className="space-y-3">
+                                <div>
+                                    <h4 className="text-sm font-medium text-white">Follow New Channels</h4>
+                                    <p className="mt-1 text-xs text-zinc-500">Search YouTube and add a channel to your local catalogue.</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <div className="relative min-w-0 flex-1">
+                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search for a channel..."
+                                            value={searchQuery}
+                                            onChange={(event) => setSearchQuery(event.target.value)}
+                                            onKeyDown={(event) => event.key === "Enter" && handleSearch()}
+                                            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 py-2.5 pl-10 pr-4 text-sm text-white transition-colors focus:border-zinc-500 focus:outline-none"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleSearch}
+                                        disabled={isSearching}
+                                        className="shrink-0 rounded-lg bg-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 transition-colors hover:bg-white disabled:opacity-50"
+                                    >
+                                        {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
+                                    </button>
+                                </div>
+                                {searchError && <p className="text-xs text-red-400">{searchError}</p>}
+
+                                {filteredSearchResults.length > 0 && (
+                                    <div className="grid animate-in gap-2 duration-200 slide-in-from-top-2 sm:grid-cols-2 xl:grid-cols-3">
+                                        {filteredSearchResults.map((result) => (
+                                            <div key={result.id} className="flex items-center justify-between gap-4 overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-900/70 p-3 transition-colors hover:border-zinc-600">
+                                                <div className="flex min-w-0 flex-1 items-center gap-3">
+                                                    <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800">
+                                                        <Image src={result.thumbnail} alt={result.title} fill className="object-cover" />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-medium text-white">{result.title}</p>
+                                                        <p className="truncate text-xs text-zinc-500">{result.description}</p>
+                                                    </div>
+                                                </div>
+                                                <button type="button" onClick={() => void addChannel(result)} aria-label={`Follow ${result.title}`}
+                                                    className="shrink-0 rounded-full bg-primary p-2 text-primary-foreground transition-colors hover:bg-white">
+                                                    <Plus className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-3 border-t border-zinc-800 pt-5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <h4 className="text-sm font-medium text-white">Current Subscriptions</h4>
+                                    <span className="rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400">{followedChannels.length}</span>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                    {followedChannels.length > 0 ? (
+                                        followedChannels.map((channel) => (
+                                            <div key={channel.channelId} className="group flex items-center justify-between gap-4 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 transition-colors hover:border-zinc-700 hover:bg-zinc-900">
+                                                <div className="flex min-w-0 flex-1 items-center gap-3">
+                                                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-800 font-bold text-zinc-400">
+                                                        {channel.thumbnail ? (
+                                                            <Image src={channel.thumbnail} alt={channel.name} fill className="object-cover" />
+                                                        ) : (
+                                                            <span>{channel.name.charAt(0)}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-medium text-white">{channel.name}</p>
+                                                        {channel.description && <p className="truncate text-xs text-zinc-500">{channel.description}</p>}
+                                                    </div>
+                                                </div>
+                                                <button type="button" onClick={() => void removeChannel(channel.channelId)} aria-label={`Stop following ${channel.name}`}
+                                                    className="shrink-0 rounded-full p-2 text-zinc-500 transition-all hover:bg-zinc-700/50 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100">
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-sm italic text-zinc-600">No channels followed yet. Search above to add some!</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div className="grid items-start gap-8 lg:grid-cols-2">
+                    {/* Content Filters Section */}
+                    <section className="space-y-4">
+                        <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">
+                            Content Filters
+                        </h3>
+                        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-800/30 p-4">
+                            <p className="text-xs leading-relaxed text-zinc-500">
+                                Shorts and live broadcasts are always ignored. Add optional rules below;
+                                title matching is case-insensitive.
+                            </p>
+                            <div>
+                                <SettingLabel htmlFor="excluded-title-terms" label="Ignore titles containing"
+                                    help="Case-insensitive fragments. A video containing any fragment is excluded from new releases and the playlist." />
+                                <input
+                                    id="excluded-title-terms"
+                                    type="text"
+                                    value={excludedTitleTerms}
+                                    onChange={(event) => setExcludedTitleTerms(event.target.value)}
+                                    placeholder="teaser, trailer, interview"
+                                    className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+                                />
+                                <p className="mt-1 text-xs text-zinc-600">Separate multiple fragments with commas.</p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                    <SettingLabel htmlFor="minimum-duration" label="Minimum duration"
+                                        help="Excludes shorter videos, such as excerpts or teasers. Leave empty for no minimum." />
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            id="minimum-duration"
+                                            type="number"
+                                            min={0}
+                                            max={86400}
+                                            value={minimumDuration}
+                                            onChange={(event) => setMinimumDuration(event.target.value)}
+                                            placeholder="No minimum"
+                                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+                                        />
+                                        <span className="text-xs text-zinc-500">seconds</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <SettingLabel htmlFor="maximum-duration" label="Maximum duration"
+                                        help="Excludes longer videos. Leave empty for no maximum." />
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            id="maximum-duration"
+                                            type="number"
+                                            min={0}
+                                            max={86400}
+                                            value={maximumDuration}
+                                            onChange={(event) => setMaximumDuration(event.target.value)}
+                                            placeholder="No maximum"
+                                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+                                        />
+                                        <span className="text-xs text-zinc-500">seconds</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={saveContentFilters}
+                                disabled={isSavingFilters}
+                                className="inline-flex items-center gap-2 rounded-lg bg-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
+                            >
+                                {isSavingFilters && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                Save filters
+                            </button>
+                            {settingsSaveError && <p className="text-xs text-red-400">{settingsSaveError}</p>}
+                        </div>
+                    </section>
+                    {/* Fetch Window Section */}
+                    <section className="space-y-4">
+                        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Video Window</h3>
+                        <div className="rounded-xl border border-zinc-800 bg-zinc-800/30 p-4">
+                            <SettingLabel htmlFor="video-lookback" label="Fetch videos from the last"
+                                help="Limits new releases shown and added to the playlist. It never deletes the local history." />
+                            <div className="mt-3 flex items-center gap-3">
+                                <select
+                                    id="video-lookback"
+                                    value={settings.videoLookbackDays}
+                                    onChange={(e) =>
+                                        void Promise.resolve(onUpdateSettings({
+                                            ...settings,
+                                            videoLookbackDays: Number(e.target.value),
+                                        })).catch((error) => setSettingsSaveError(
+                                            error instanceof Error ? error.message : "Could not save the video window."
+                                        ))
+                                    }
+                                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-zinc-500"
+                                >
+                                    <option value={7}>7 days</option>
+                                    <option value={14}>14 days</option>
+                                    <option value={30}>30 days</option>
+                                    <option value={90}>90 days</option>
+                                    <option value={180}>180 days</option>
+                                    <option value={365}>1 year</option>
+                                </select>
+                                <span className="text-sm text-zinc-500">per channel</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    </div>
+
+                    <section className="space-y-4">
                         <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">
                             Synchronization settings
                         </h3>
@@ -343,202 +539,6 @@ export default function ChannelSettings({
                                 {isSavingSync && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                                 Save synchronization settings
                             </button>
-                        </div>
-                    </section>
-
-                    <div className="grid items-start gap-8 lg:grid-cols-2">
-                    {/* Fetch Window Section */}
-                    <section className="space-y-4">
-                        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Video Window</h3>
-                        <div className="rounded-xl border border-zinc-800 bg-zinc-800/30 p-4">
-                            <SettingLabel htmlFor="video-lookback" label="Fetch videos from the last"
-                                help="Limits new releases shown and added to the playlist. It never deletes the local history." />
-                            <div className="mt-3 flex items-center gap-3">
-                                <select
-                                    id="video-lookback"
-                                    value={settings.videoLookbackDays}
-                                    onChange={(e) =>
-                                        void Promise.resolve(onUpdateSettings({
-                                            ...settings,
-                                            videoLookbackDays: Number(e.target.value),
-                                        })).catch((error) => setSettingsSaveError(
-                                            error instanceof Error ? error.message : "Could not save the video window."
-                                        ))
-                                    }
-                                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-zinc-500"
-                                >
-                                    <option value={7}>7 days</option>
-                                    <option value={14}>14 days</option>
-                                    <option value={30}>30 days</option>
-                                    <option value={90}>90 days</option>
-                                    <option value={180}>180 days</option>
-                                    <option value={365}>1 year</option>
-                                </select>
-                                <span className="text-sm text-zinc-500">per channel</span>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Content Filters Section */}
-                    <section className="space-y-4">
-                        <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">
-                            Content Filters
-                        </h3>
-                        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-800/30 p-4">
-                            <p className="text-xs leading-relaxed text-zinc-500">
-                                Shorts and live broadcasts are always ignored. Add optional rules below;
-                                title matching is case-insensitive.
-                            </p>
-                            <div>
-                                <SettingLabel htmlFor="excluded-title-terms" label="Ignore titles containing"
-                                    help="Case-insensitive fragments. A video containing any fragment is excluded from new releases and the playlist." />
-                                <input
-                                    id="excluded-title-terms"
-                                    type="text"
-                                    value={excludedTitleTerms}
-                                    onChange={(event) => setExcludedTitleTerms(event.target.value)}
-                                    placeholder="teaser, trailer, interview"
-                                    className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
-                                />
-                                <p className="mt-1 text-xs text-zinc-600">Separate multiple fragments with commas.</p>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <div>
-                                    <SettingLabel htmlFor="minimum-duration" label="Minimum duration"
-                                        help="Excludes shorter videos, such as excerpts or teasers. Leave empty for no minimum." />
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <input
-                                            id="minimum-duration"
-                                            type="number"
-                                            min={0}
-                                            max={86400}
-                                            value={minimumDuration}
-                                            onChange={(event) => setMinimumDuration(event.target.value)}
-                                            placeholder="No minimum"
-                                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
-                                        />
-                                        <span className="text-xs text-zinc-500">seconds</span>
-                                    </div>
-                                </div>
-                                <div>
-                                    <SettingLabel htmlFor="maximum-duration" label="Maximum duration"
-                                        help="Excludes longer videos. Leave empty for no maximum." />
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <input
-                                            id="maximum-duration"
-                                            type="number"
-                                            min={0}
-                                            max={86400}
-                                            value={maximumDuration}
-                                            onChange={(event) => setMaximumDuration(event.target.value)}
-                                            placeholder="No maximum"
-                                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
-                                        />
-                                        <span className="text-xs text-zinc-500">seconds</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={saveContentFilters}
-                                disabled={isSavingFilters}
-                                className="inline-flex items-center gap-2 rounded-lg bg-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
-                            >
-                                {isSavingFilters && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                Save filters
-                            </button>
-                            {settingsSaveError && <p className="text-xs text-red-400">{settingsSaveError}</p>}
-                        </div>
-                    </section>
-                    </div>
-
-                    <section className="space-y-4">
-                        <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">Channels</h3>
-                        <div className="space-y-6 rounded-xl border border-zinc-800 bg-zinc-800/30 p-5">
-                            <div className="space-y-3">
-                                <div>
-                                    <h4 className="text-sm font-medium text-white">Follow New Channels</h4>
-                                    <p className="mt-1 text-xs text-zinc-500">Search YouTube and add a channel to your local catalogue.</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <div className="relative min-w-0 flex-1">
-                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search for a channel..."
-                                            value={searchQuery}
-                                            onChange={(event) => setSearchQuery(event.target.value)}
-                                            onKeyDown={(event) => event.key === "Enter" && handleSearch()}
-                                            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 py-2.5 pl-10 pr-4 text-sm text-white transition-colors focus:border-zinc-500 focus:outline-none"
-                                        />
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleSearch}
-                                        disabled={isSearching}
-                                        className="shrink-0 rounded-lg bg-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 transition-colors hover:bg-white disabled:opacity-50"
-                                    >
-                                        {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
-                                    </button>
-                                </div>
-                                {searchError && <p className="text-xs text-red-400">{searchError}</p>}
-
-                                {filteredSearchResults.length > 0 && (
-                                    <div className="grid animate-in gap-2 duration-200 slide-in-from-top-2 sm:grid-cols-2 xl:grid-cols-3">
-                                        {filteredSearchResults.map((result) => (
-                                            <div key={result.id} className="flex items-center justify-between gap-4 overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-900/70 p-3 transition-colors hover:border-zinc-600">
-                                                <div className="flex min-w-0 flex-1 items-center gap-3">
-                                                    <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-800">
-                                                        <Image src={result.thumbnail} alt={result.title} fill className="object-cover" />
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="truncate text-sm font-medium text-white">{result.title}</p>
-                                                        <p className="truncate text-xs text-zinc-500">{result.description}</p>
-                                                    </div>
-                                                </div>
-                                                <button type="button" onClick={() => void addChannel(result)} aria-label={`Follow ${result.title}`}
-                                                    className="shrink-0 rounded-full bg-primary p-2 text-primary-foreground transition-colors hover:bg-white">
-                                                    <Plus className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="space-y-3 border-t border-zinc-800 pt-5">
-                                <div className="flex items-center justify-between gap-3">
-                                    <h4 className="text-sm font-medium text-white">Current Subscriptions</h4>
-                                    <span className="rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400">{followedChannels.length}</span>
-                                </div>
-                                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                                    {followedChannels.length > 0 ? (
-                                        followedChannels.map((channel) => (
-                                            <div key={channel.channelId} className="group flex items-center justify-between gap-4 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 transition-colors hover:border-zinc-700 hover:bg-zinc-900">
-                                                <div className="flex min-w-0 flex-1 items-center gap-3">
-                                                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-800 font-bold text-zinc-400">
-                                                        {channel.thumbnail ? (
-                                                            <Image src={channel.thumbnail} alt={channel.name} fill className="object-cover" />
-                                                        ) : (
-                                                            <span>{channel.name.charAt(0)}</span>
-                                                        )}
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="truncate text-sm font-medium text-white">{channel.name}</p>
-                                                        {channel.description && <p className="truncate text-xs text-zinc-500">{channel.description}</p>}
-                                                    </div>
-                                                </div>
-                                                <button type="button" onClick={() => void removeChannel(channel.channelId)} aria-label={`Stop following ${channel.name}`}
-                                                    className="shrink-0 rounded-full p-2 text-zinc-500 transition-all hover:bg-zinc-700/50 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100">
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-sm italic text-zinc-600">No channels followed yet. Search above to add some!</p>
-                                    )}
-                                </div>
-                            </div>
                         </div>
                     </section>
 

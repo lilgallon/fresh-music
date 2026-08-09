@@ -20,6 +20,7 @@ import {
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
 import SettingHelpTooltip from "./SettingHelpTooltip";
 import type { AppSettings } from "@/types/settings";
+import YouTubeErrorMessage from "./YouTubeErrorMessage";
 
 type Action = "sync" | "recreate" | "disconnect" | null;
 
@@ -352,7 +353,7 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled, settings 
 
             {(error || status.sync.error || progress?.error) && (
                 <p className="rounded-lg border border-red-900/40 bg-red-950/20 p-3 text-xs leading-relaxed text-red-300">
-                    {error || status.sync.error || progress?.error}
+                    <YouTubeErrorMessage message={error || status.sync.error || progress?.error || ""} />
                 </p>
             )}
 

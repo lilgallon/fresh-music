@@ -24,8 +24,10 @@ import {
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
 import { getLastCatalogDiscoveryAt, isApplicationInitialized } from "./catalog-repository";
 import { getLastSuccessfulSyncAt, getLatestSyncRun } from "./sync-run-repository";
-import { getYouTubeQuotaStatus } from "./youtube-quota";
+import { getYouTubeQuotaStatus, pauseYouTubeQuota } from "./youtube-quota";
 import { getSettings } from "./repository";
+import { isYouTubeQuotaExceededError } from "./youtube-quota-error";
+import { getYouTubeQuotaDay } from "./youtube-quota-time";
 
 function toIso(timestamp: number | null): string | null {
     return timestamp == null ? null : new Date(timestamp).toISOString();
@@ -43,7 +45,23 @@ export function getYouTubeIntegrationPublicStatus(): YouTubeIntegrationPublicSta
         : null;
 
     const latestRun = getLatestSyncRun();
-    const quota = getYouTubeQuotaStatus();
+    let quota = getYouTubeQuotaStatus();
+    const recordedErrors = [
+        { message: latestRun?.error, timestamp: latestRun?.completedAt },
+        { message: integration?.lastSyncError, timestamp: integration?.lastSyncCompletedAt },
+    ];
+    const hasCurrentQuotaError = recordedErrors.some(({ message, timestamp }) =>
+        Boolean(
+            message
+            && timestamp
+            && getYouTubeQuotaDay(timestamp) === getYouTubeQuotaDay()
+            && isYouTubeQuotaExceededError(403, null, message)
+        )
+    );
+    if (!quota.pausedUntil && hasCurrentQuotaError) {
+        pauseYouTubeQuota();
+        quota = getYouTubeQuotaStatus();
+    }
     const settings = getSettings();
     const intervalNextAt = latestRun?.completedAt
         ? latestRun.completedAt + settings.syncIntervalMinutes * 60 * 1000

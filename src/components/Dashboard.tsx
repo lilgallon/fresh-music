@@ -12,11 +12,6 @@ import {
     fetchWatched,
     bootstrapApplicationCache,
     fetchCatalogVideos,
-    putChannels,
-    putWatched,
-    putSettings,
-    upsertChannel,
-    deleteChannel as apiDeleteChannel,
     postWatched,
     deleteWatched,
     DEFAULT_SETTINGS,
@@ -24,8 +19,8 @@ import {
 } from "@/lib/storage-client";
 import VideoCard from "./VideoCard";
 import VideoModal from "./VideoModal";
-import ChannelSettings from "./ChannelSettings";
 import { AlertTriangle, Music, History, PlayCircle, Loader2, Music2, Settings2 } from "lucide-react";
+import Link from "next/link";
 
 export default function Dashboard() {
     const [videos, setVideos] = useState<YouTubeVideo[]>([]);
@@ -36,16 +31,8 @@ export default function Dashboard() {
     const [nextVideoCursor, setNextVideoCursor] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<"new" | "history">("new");
     const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
-    const [showSettings, setShowSettings] = useState(false);
     const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
     const hydratedRef = useRef(false);
-
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        if (params.has("youtube")) {
-            setShowSettings(true);
-        }
-    }, []);
 
     // Initial hydration: localStorage first (instant render), then reconcile with server
     useEffect(() => {
@@ -144,57 +131,6 @@ export default function Dashboard() {
         });
     };
 
-    const addChannel = async (channel: YouTubeChannel) => {
-        if (followedChannels.some((c) => c.channelId === channel.channelId)) return;
-        setFollowedChannels((prev) => [...prev, channel]);
-        try {
-            await upsertChannel(channel);
-        } catch (err) {
-            console.error(`Failed to add channel ${channel.channelId}, rolling back:`, err);
-            setFollowedChannels((prev) => prev.filter((c) => c.channelId !== channel.channelId));
-        }
-    };
-
-    const removeChannel = async (channelId: string) => {
-        const previous = followedChannels;
-        setFollowedChannels((prev) => prev.filter((c) => c.channelId !== channelId));
-        try {
-            await apiDeleteChannel(channelId);
-        } catch (err) {
-            console.error(`Failed to remove channel ${channelId}, rolling back:`, err);
-            setFollowedChannels(previous);
-        }
-    };
-
-    const handleImportData = async (channels: YouTubeChannel[], watched: string[]) => {
-        try {
-            const [savedChannels, savedWatched] = await Promise.all([
-                putChannels(channels),
-                putWatched(watched),
-            ]);
-            setFollowedChannels(savedChannels);
-            setWatchedIds(savedWatched);
-        } catch (err) {
-            console.error("Failed to import data:", err);
-            alert("Import partially failed — see console for details.");
-        }
-        setShowSettings(false);
-    };
-
-    const updateSettings = async (nextSettings: AppSettings) => {
-        const previousSettings = settings;
-        setSettings(nextSettings);
-        try {
-            const savedSettings = await putSettings(nextSettings);
-            setSettings(savedSettings);
-            await loadVideos(false);
-        } catch (err) {
-            console.error("Failed to update settings, rolling back:", err);
-            setSettings(previousSettings);
-            throw err;
-        }
-    };
-
     const filteredVideos = videos.filter((v) =>
         activeTab === "new" ? !watchedIds.includes(v.id) : watchedIds.includes(v.id)
     );
@@ -271,13 +207,13 @@ export default function Dashboard() {
                             </button>
                         </nav>
 
-                        <button
-                            onClick={() => setShowSettings(true)}
+                        <Link
+                            href="/settings"
                             aria-label="Open settings"
                             className="rounded-full bg-zinc-900 p-2.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors border border-zinc-800"
                         >
                             <Settings2 className="h-5 w-5" />
-                        </button>
+                        </Link>
                     </div>
                 </div>
 
@@ -377,20 +313,6 @@ export default function Dashboard() {
                 onNext={() => showAdjacentVideo("next")}
                 hasAdjacentVideo={filteredVideos.length > 1}
             />
-
-            {showSettings && (
-                <ChannelSettings
-                    followedChannels={followedChannels}
-                    watchedIds={watchedIds}
-                    settings={settings}
-                    onAddChannel={addChannel}
-                    onRemoveChannel={removeChannel}
-                    onUpdateSettings={updateSettings}
-                    onImportData={handleImportData}
-                    onWatchedReconciled={refreshWatchedState}
-                    onClose={() => setShowSettings(false)}
-                />
-            )}
         </div>
     );
 }

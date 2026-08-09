@@ -14,6 +14,7 @@ import {
     reserveYouTubeWrite,
 } from "./youtube-quota";
 import { getSettings } from "./repository";
+import { isYouTubeQuotaExceededError } from "./youtube-quota-error";
 
 const BASE_URL = "https://www.googleapis.com/youtube/v3";
 export const FRESH_MUSIC_PLAYLIST_TITLE = "Fresh Music — Nouveautés";
@@ -79,9 +80,10 @@ async function authorizedRequest<T>(
             // Keep the HTTP status as the diagnostic when Google returned no JSON body.
         }
         const reason = data.error?.errors?.[0]?.reason ?? null;
-        if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") pauseYouTubeQuota();
+        const message = data.error?.message || `YouTube API request failed with ${response.status}`;
+        if (isYouTubeQuotaExceededError(response.status, reason, message)) pauseYouTubeQuota();
         throw new YouTubeApiError(
-            data.error?.message || `YouTube API request failed with ${response.status}`,
+            message,
             response.status,
             reason
         );

@@ -22,6 +22,7 @@ import {
     recordYouTubeSearch,
 } from "./youtube-quota";
 import { YouTubeApiError } from "./youtube-api-server";
+import { isYouTubeQuotaExceededError } from "./youtube-quota-error";
 
 const BASE_URL = "https://www.googleapis.com/youtube/v3";
 
@@ -42,9 +43,10 @@ async function publicRequest<T>(path: string, reservedUnits = 0): Promise<T> {
     if (!response.ok) {
         const data = await response.json().catch(() => ({})) as ApiErrorResponse;
         const reason = data.error?.errors?.[0]?.reason ?? null;
-        if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") pauseYouTubeQuota();
+        const message = data.error?.message ?? `YouTube API request failed with ${response.status}`;
+        if (isYouTubeQuotaExceededError(response.status, reason, message)) pauseYouTubeQuota();
         throw new YouTubeApiError(
-            data.error?.message ?? `YouTube API request failed with ${response.status}`,
+            message,
             response.status,
             reason
         );

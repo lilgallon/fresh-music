@@ -3,6 +3,7 @@ import "server-only";
 import { getDb } from "./db";
 import { getSettings } from "./repository";
 import { getYouTubeQuotaDay, nextYouTubeQuotaReset } from "./youtube-quota-time";
+import { readUnitsAtQuotaExhaustion } from "./youtube-quota-error";
 
 export { YOUTUBE_QUOTA_TIME_ZONE, nextYouTubeQuotaReset } from "./youtube-quota-time";
 
@@ -90,13 +91,20 @@ export function reserveYouTubeWrite(units = 50): { allowed: boolean; reason?: st
 
 export function pauseYouTubeQuota(): number {
     const day = getYouTubeQuotaDay();
-    ensureUsage(day);
+    const settings = getSettings();
+    const current = ensureUsage(day);
+    const exhaustedReadUnits = readUnitsAtQuotaExhaustion(
+        settings.youtubeDailyQuotaUnits,
+        current.write_units
+    );
     const pausedUntil = nextYouTubeQuotaReset();
     getDb().prepare(
         `UPDATE youtube_quota_usage
-         SET paused_until = ?, updated_at = unixepoch()
+         SET read_units = ?,
+             paused_until = ?,
+             updated_at = unixepoch()
          WHERE quota_day = ?`
-    ).run(pausedUntil, day);
+    ).run(exhaustedReadUnits, pausedUntil, day);
     return pausedUntil;
 }
 
@@ -109,6 +117,9 @@ export function getYouTubeQuotaStatus(): YouTubeQuotaStatus {
         0,
         settings.youtubeDailyQuotaUnits - usage.read_units - usage.write_units
     );
+    const pausedUntil = usage.paused_until != null && usage.paused_until > Date.now()
+        ? new Date(usage.paused_until).toISOString()
+        : null;
     return {
         day,
         totalLimit: settings.youtubeDailyQuotaUnits,
@@ -116,12 +127,10 @@ export function getYouTubeQuotaStatus(): YouTubeQuotaStatus {
         readUnits: usage.read_units,
         writeUnits: usage.write_units,
         searchCalls: usage.search_calls,
-        estimatedTotalUnits: usage.read_units + usage.write_units,
+        estimatedTotalUnits: pausedUntil ? settings.youtubeDailyQuotaUnits : usage.read_units + usage.write_units,
         remainingMutations: Math.floor(Math.min(remainingByWrite, remainingByTotal) / 50),
         resetAt: new Date(nextYouTubeQuotaReset()).toISOString(),
-        pausedUntil: usage.paused_until != null && usage.paused_until > Date.now()
-            ? new Date(usage.paused_until).toISOString()
-            : null,
+        pausedUntil,
     };
 }
 

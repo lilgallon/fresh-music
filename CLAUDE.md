@@ -22,7 +22,9 @@ This is a single-page Next.js 14 (App Router) app. The UI lives mostly in one cl
 - `settings` — user preferences such as the video lookback window
 - `videos` — paged from the local SQLite catalogue through `GET /api/videos`; the browser never calls YouTube directly
 
-The "New" vs "History" tabs are just a filter over `videos` based on `watchedIds`. There is no router-level navigation.
+The "New" vs "History" tabs are just a filter over `videos` based on `watchedIds`; `/settings` is the only separate application page.
+
+All configuration, YouTube diagnostics, channel management, and backup controls live on the dedicated `/settings` page (`src/components/SettingsPage.tsx` + `ChannelSettings.tsx`). OAuth redirects back to this page. Do not reintroduce the former settings modal into `Dashboard.tsx`.
 
 `src/components/VideoModal.tsx` owns the player overlay interaction. The close button has intentionally been removed: clicking the bottom backdrop closes the modal, clicking the left backdrop marks the current video watched and navigates to the previous video, and clicking the right backdrop marks it watched and navigates to the next video. The left/right affordances show the target video's thumbnail/title; keep these hints in sync if changing the navigation behavior.
 

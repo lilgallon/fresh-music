@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Search, Plus, Trash2, Settings, Loader2, Download, Upload } from "lucide-react";
+import { ArrowLeft, Search, Plus, Trash2, Settings, Loader2, Download, Upload } from "lucide-react";
 import { YouTubeChannel } from "@/types/youtube";
 import { AppSettings, SearchResultChannel, searchChannels } from "@/lib/storage-client";
 import Image from "next/image";
@@ -128,7 +128,7 @@ export default function ChannelSettings({
         reader.readAsText(file);
     };
 
-    const addChannel = (result: SearchResultChannel) => {
+    const addChannel = async (result: SearchResultChannel) => {
         if (followedChannels.some((c) => c.channelId === result.id)) return;
 
         const newChannel: YouTubeChannel = {
@@ -139,11 +139,21 @@ export default function ChannelSettings({
             description: result.description,
         };
 
-        onAddChannel(newChannel);
+        setSearchError(null);
+        try {
+            await onAddChannel(newChannel);
+        } catch (error) {
+            setSearchError(error instanceof Error ? error.message : "Could not follow this channel.");
+        }
     };
 
-    const removeChannel = (channelId: string) => {
-        onRemoveChannel(channelId);
+    const removeChannel = async (channelId: string) => {
+        setSearchError(null);
+        try {
+            await onRemoveChannel(channelId);
+        } catch (error) {
+            setSearchError(error instanceof Error ? error.message : "Could not remove this channel.");
+        }
     };
 
     const saveContentFilters = async () => {
@@ -193,14 +203,14 @@ export default function ChannelSettings({
     );
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200 overflow-x-hidden transition-all">
-            <div className="relative flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl animate-in zoom-in-95 duration-200 border border-zinc-800">
+        <div className="min-h-screen bg-background px-4 py-6 text-foreground md:px-8 md:py-10">
+            <div className="mx-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-zinc-800 p-6 flex-shrink-0">
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
                             <Settings className="h-5 w-5 text-zinc-400" />
-                            <h2 className="text-xl font-semibold text-white">Manage & Backup</h2>
+                            <h1 className="text-xl font-semibold text-white">Settings & Backup</h1>
                         </div>
                     </div>
 
@@ -224,16 +234,16 @@ export default function ChannelSettings({
 
                         <button
                             onClick={onClose}
-                            aria-label="Close settings"
+                            aria-label="Back to Fresh Music"
                             className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
                         >
-                            <X className="h-6 w-6" />
+                            <ArrowLeft className="h-6 w-6" />
                         </button>
                     </div>
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-8">
+                <div className="space-y-8 p-6">
                     {/* YouTube Playlist Section */}
                     <section className="space-y-4">
                         <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Automatic Playlist</h3>
@@ -515,7 +525,7 @@ export default function ChannelSettings({
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => addChannel(result)}
+                                            onClick={() => void addChannel(result)}
                                             aria-label={`Follow ${result.title}`}
                                             className="shrink-0 rounded-full bg-primary p-2 text-primary-foreground hover:bg-white transition-colors"
                                         >
@@ -551,7 +561,7 @@ export default function ChannelSettings({
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => removeChannel(channel.channelId)}
+                                            onClick={() => void removeChannel(channel.channelId)}
                                             aria-label={`Stop following ${channel.name}`}
                                             className="shrink-0 rounded-full p-2 text-zinc-500 hover:bg-zinc-700/50 hover:text-red-400 transition-all sm:opacity-0 group-hover:opacity-100 focus:opacity-100"
                                         >
@@ -572,7 +582,7 @@ export default function ChannelSettings({
                         onClick={onClose}
                         className="w-full rounded-lg bg-zinc-800 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700 transition-colors"
                     >
-                        Done
+                        Back to Fresh Music
                     </button>
                 </div>
             </div>

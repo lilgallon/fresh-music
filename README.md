@@ -52,7 +52,7 @@ Fresh Music requests only `https://www.googleapis.com/auth/youtube.force-ssl`. O
 | `APP_BASE_URL` | For playlist sync | Public origin without a trailing slash, such as `https://music.example.com`. |
 | `DB_PATH` | No | SQLite path; defaults to `./data/freshmusic.db` and `/app/data/freshmusic.db` in Docker. |
 
-Synchronization interval, quota budgets, per-run limits, discovery pagination and the Shorts cache duration are configured from **Manage & Backup → Synchronization settings** and persisted in SQLite.
+Synchronization interval, quota budgets, per-run limits, discovery pagination and the Shorts cache duration are configured from the dedicated **Settings & Backup** page and persisted in SQLite.
 The deprecated `PLAYLIST_SYNC_INTERVAL_MINUTES` variable is read only once when migrating an older database; use the interface afterwards.
 
 ## Docker

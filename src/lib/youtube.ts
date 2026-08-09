@@ -34,11 +34,13 @@ function getCutoffDate(lookbackDays: number): Date {
 export async function fetchLatestVideos(
     channelId: string,
     lookbackDays: number = 30,
-    filterRules?: YouTubeContentFilterRules
+    filterRules?: YouTubeContentFilterRules,
+    reportIssue?: (message: string) => void
 ): Promise<YouTubeVideo[]> {
     const apiKey = await getApiKey();
     if (!apiKey) {
         console.error("YouTube API Key is missing");
+        reportIssue?.("The YouTube API key is missing.");
         return [];
     }
 
@@ -58,6 +60,7 @@ export async function fetchLatestVideos(
         );
 
         if (!response.ok) {
+            let failureResponse = response;
             // Silently attempt fallback to get the correct uploads playlist ID
             try {
                 const channelResponse = await fetch(
@@ -79,12 +82,16 @@ export async function fetchLatestVideos(
                                 filterRules
                             );
                         }
+                        failureResponse = retryResponse;
                     }
+                } else {
+                    failureResponse = channelResponse;
                 }
             } catch {
                 // Ignore fallback errors
             }
 
+            reportIssue?.(await describeYouTubeApiFailure(failureResponse));
             return []; // Return empty instead of throwing to keep the UI stable
         }
 
@@ -95,7 +102,24 @@ export async function fetchLatestVideos(
         );
     } catch (error) {
         console.error(`Error fetching videos for channel ${channelId}:`, error);
+        reportIssue?.("YouTube could not be reached. Existing data was kept unchanged.");
         return [];
+    }
+}
+
+async function describeYouTubeApiFailure(response: Response): Promise<string> {
+    try {
+        const data = await response.clone().json() as {
+            error?: { message?: string; errors?: Array<{ reason?: string }> };
+        };
+        const reason = data.error?.errors?.[0]?.reason;
+        if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
+            return "The YouTube API quota is exhausted. Videos will return after Google resets the daily quota.";
+        }
+        if (reason === "keyInvalid") return "The configured YouTube API key is invalid.";
+        return data.error?.message || `YouTube API request failed with status ${response.status}.`;
+    } catch {
+        return `YouTube API request failed with status ${response.status}.`;
     }
 }
 
@@ -154,16 +178,23 @@ export async function fetchAllVideos(
     channels: { channelId: string }[],
     lookbackDays: number = 30,
     filterRules?: YouTubeContentFilterRules
-): Promise<YouTubeVideo[]> {
+): Promise<{ videos: YouTubeVideo[]; error: string | null }> {
+    const issues = new Set<string>();
     const allVideosPromises = channels.map((channel) =>
-        fetchLatestVideos(channel.channelId, lookbackDays, filterRules)
+        fetchLatestVideos(
+            channel.channelId,
+            lookbackDays,
+            filterRules,
+            (message) => issues.add(message)
+        )
     );
     const results = await Promise.all(allVideosPromises);
 
     // Flatten, sort by date (newest first), and return
-    return results
+    const videos = results
         .flat()
         .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    return { videos, error: issues.values().next().value ?? null };
 }
 
 export interface SearchResultChannel {

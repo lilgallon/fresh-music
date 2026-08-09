@@ -27,13 +27,14 @@ import {
 import VideoCard from "./VideoCard";
 import VideoModal from "./VideoModal";
 import ChannelSettings from "./ChannelSettings";
-import { Music, History, PlayCircle, Loader2, Music2, Settings2 } from "lucide-react";
+import { AlertTriangle, Music, History, PlayCircle, Loader2, Music2, Settings2 } from "lucide-react";
 
 export default function Dashboard() {
     const [videos, setVideos] = useState<YouTubeVideo[]>([]);
     const [followedChannels, setFollowedChannels] = useState<YouTubeChannel[]>([]);
     const [watchedIds, setWatchedIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
+    const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<"new" | "history">("new");
     const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
     const [showSettings, setShowSettings] = useState(false);
@@ -153,16 +154,18 @@ export default function Dashboard() {
     const loadVideos = useCallback(async () => {
         if (followedChannels.length === 0) {
             setVideos([]);
+            setVideoLoadError(null);
             setLoading(false);
             return;
         }
         setLoading(true);
-        const data = await fetchAllVideos(
+        const result = await fetchAllVideos(
             followedChannels,
             settings.videoLookbackDays,
             settings
         );
-        setVideos(data);
+        setVideos(result.videos);
+        setVideoLoadError(result.error);
         setLoading(false);
     }, [followedChannels, settings]);
 
@@ -347,6 +350,12 @@ export default function Dashboard() {
 
             {/* Main Content */}
             <main className="mx-auto max-w-7xl px-4 py-8 md:px-8">
+                {videoLoadError && !loading && (
+                    <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-900/50 bg-amber-950/20 p-4 text-amber-200">
+                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                        <p className="text-sm leading-relaxed">{videoLoadError}</p>
+                    </div>
+                )}
                 {loading ? (
                     <div className="flex h-[60vh] flex-col items-center justify-center space-y-4">
                         <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />

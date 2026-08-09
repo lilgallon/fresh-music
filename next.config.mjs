@@ -5,6 +5,7 @@ const nextConfig = {
         // Required so the better-sqlite3 native binding is copied to .next/standalone
         // and not bundled by webpack.
         serverComponentsExternalPackages: ['better-sqlite3'],
+        instrumentationHook: true,
     },
     images: {
         remotePatterns: [

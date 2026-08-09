@@ -6,6 +6,7 @@ import { YouTubeChannel } from "@/types/youtube";
 import { SearchResultChannel, searchChannels } from "@/lib/youtube";
 import { AppSettings } from "@/lib/storage-client";
 import Image from "next/image";
+import YouTubePlaylistSettings from "./YouTubePlaylistSettings";
 
 interface ChannelSettingsProps {
     followedChannels: YouTubeChannel[];
@@ -15,6 +16,7 @@ interface ChannelSettingsProps {
     onRemoveChannel: (channelId: string) => void | Promise<void>;
     onUpdateSettings: (settings: AppSettings) => void | Promise<void>;
     onImportData: (channels: YouTubeChannel[], watchedIds: string[]) => void | Promise<void>;
+    onWatchedReconciled: () => void | Promise<void>;
     onClose: () => void;
 }
 
@@ -26,6 +28,7 @@ export default function ChannelSettings({
     onRemoveChannel,
     onUpdateSettings,
     onImportData,
+    onWatchedReconciled,
     onClose,
 }: ChannelSettingsProps) {
     const [searchQuery, setSearchQuery] = useState("");
@@ -153,6 +156,12 @@ export default function ChannelSettings({
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-8">
+                    {/* YouTube Playlist Section */}
+                    <section className="space-y-4">
+                        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Automatic Playlist</h3>
+                        <YouTubePlaylistSettings onWatchedReconciled={onWatchedReconciled} />
+                    </section>
+
                     {/* Fetch Window Section */}
                     <section className="space-y-4">
                         <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Video Window</h3>

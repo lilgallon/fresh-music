@@ -1,4 +1,5 @@
 import { YouTubeChannel } from "@/types/youtube";
+import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
 
 const LS_CHANNELS = "followedChannels";
 const LS_WATCHED = "watchedVideoIds";
@@ -129,4 +130,30 @@ export async function deleteWatched(videoId: string): Promise<void> {
         method: "DELETE",
     });
     if (!res.ok) throw new Error(`DELETE /api/watched/${videoId} failed: ${res.status}`);
+}
+
+export async function fetchYouTubeIntegration(): Promise<YouTubeIntegrationPublicStatus> {
+    const res = await fetch("/api/youtube/connection", { cache: "no-store" });
+    if (!res.ok) throw new Error(`GET /api/youtube/connection failed: ${res.status}`);
+    return res.json();
+}
+
+export async function syncYouTubePlaylist(): Promise<YouTubeIntegrationPublicStatus> {
+    const res = await fetch("/api/youtube/sync", { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `POST /api/youtube/sync failed: ${res.status}`);
+    return body.status;
+}
+
+export async function recreateYouTubePlaylist(): Promise<YouTubeIntegrationPublicStatus> {
+    const res = await fetch("/api/youtube/playlist", { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `POST /api/youtube/playlist failed: ${res.status}`);
+    return body;
+}
+
+export async function disconnectYouTube(): Promise<YouTubeIntegrationPublicStatus> {
+    const res = await fetch("/api/youtube/connection", { method: "DELETE" });
+    if (!res.ok) throw new Error(`DELETE /api/youtube/connection failed: ${res.status}`);
+    return res.json();
 }

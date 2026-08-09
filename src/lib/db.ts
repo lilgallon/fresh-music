@@ -22,6 +22,42 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value      TEXT NOT NULL,
   updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+CREATE TABLE IF NOT EXISTS youtube_integration (
+  id                      INTEGER PRIMARY KEY CHECK (id = 1),
+  youtube_channel_id      TEXT,
+  youtube_channel_title   TEXT,
+  encrypted_refresh_token TEXT,
+  playlist_id             TEXT,
+  playlist_title          TEXT,
+  connected_at            INTEGER,
+  updated_at              INTEGER NOT NULL DEFAULT (unixepoch()),
+  last_sync_started_at    INTEGER,
+  last_sync_completed_at  INTEGER,
+  next_sync_at            INTEGER,
+  last_sync_status        TEXT NOT NULL DEFAULT 'idle',
+  last_sync_error         TEXT,
+  last_sync_added         INTEGER NOT NULL DEFAULT 0,
+  last_sync_removed       INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS youtube_playlist_entries (
+  video_id          TEXT PRIMARY KEY,
+  source_channel_id TEXT,
+  published_at      TEXT,
+  playlist_item_id  TEXT,
+  state             TEXT NOT NULL DEFAULT 'adding'
+                    CHECK (state IN ('adding', 'active', 'removal_pending', 'removed')),
+  managed_by_app    INTEGER NOT NULL DEFAULT 1,
+  removal_reason    TEXT,
+  added_at          INTEGER,
+  removed_at        INTEGER,
+  last_error        TEXT,
+  updated_at        INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_youtube_playlist_entries_state
+  ON youtube_playlist_entries (state);
 `;
 
 let instance: Database.Database | null = null;

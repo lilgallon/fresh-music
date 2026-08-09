@@ -69,7 +69,10 @@ export async function fetchLatestVideos(channelId: string, lookbackDays: number 
                         );
                         if (retryResponse.ok) {
                             const retryData = await retryResponse.json();
-                            return filterVideosByDate(mapPlaylistItems(retryData.items), cutoffDate);
+                            return filterShortVideos(
+                                filterVideosByDate(mapPlaylistItems(retryData.items), cutoffDate),
+                                apiKey
+                            );
                         }
                     }
                 }
@@ -81,7 +84,10 @@ export async function fetchLatestVideos(channelId: string, lookbackDays: number 
         }
 
         const data = await response.json();
-        return filterVideosByDate(mapPlaylistItems(data.items), cutoffDate);
+        return filterShortVideos(
+            filterVideosByDate(mapPlaylistItems(data.items), cutoffDate),
+            apiKey
+        );
     } catch (error) {
         console.error(`Error fetching videos for channel ${channelId}:`, error);
         return [];
@@ -113,6 +119,41 @@ function mapPlaylistItems(items: YouTubePlaylistItem[]): YouTubeVideo[] {
 
 function filterVideosByDate(videos: YouTubeVideo[], cutoffDate: Date): YouTubeVideo[] {
     return videos.filter((video) => new Date(video.publishedAt) >= cutoffDate);
+}
+
+function parseIsoDurationSeconds(duration: string): number | null {
+    const match = duration.match(/^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/);
+    if (!match) return null;
+    const [, days = "0", hours = "0", minutes = "0", seconds = "0"] = match;
+    return Number(days) * 86400 + Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
+}
+
+async function filterShortVideos(videos: YouTubeVideo[], apiKey: string): Promise<YouTubeVideo[]> {
+    if (videos.length === 0) return videos;
+
+    try {
+        const response = await fetch(
+            `${BASE_URL}/videos?part=contentDetails&id=${encodeURIComponent(videos.map((video) => video.id).join(","))}&key=${apiKey}`
+        );
+        if (!response.ok) return videos;
+        const data = await response.json() as {
+            items?: Array<{ id: string; contentDetails?: { duration?: string } }>;
+        };
+        const durationById = new Map(
+            (data.items ?? []).map((item) => [
+                item.id,
+                item.contentDetails?.duration
+                    ? parseIsoDurationSeconds(item.contentDetails.duration)
+                    : null,
+            ])
+        );
+        return videos.filter((video) => {
+            const seconds = durationById.get(video.id);
+            return seconds == null || seconds > 60;
+        });
+    } catch {
+        return videos;
+    }
 }
 
 export async function fetchAllVideos(channels: { channelId: string }[], lookbackDays: number = 30): Promise<YouTubeVideo[]> {

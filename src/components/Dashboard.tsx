@@ -40,6 +40,13 @@ export default function Dashboard() {
     const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
     const hydratedRef = useRef(false);
 
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has("youtube")) {
+            setShowSettings(true);
+        }
+    }, []);
+
     // Initial hydration: localStorage first (instant render), then reconcile with server
     useEffect(() => {
         const cachedChannels = readChannelsCache();
@@ -95,6 +102,21 @@ export default function Dashboard() {
     useEffect(() => {
         if (hydratedRef.current) writeSettingsCache(settings);
     }, [settings]);
+
+    const refreshWatchedState = useCallback(async () => {
+        try {
+            const serverWatched = await fetchWatched();
+            setWatchedIds(serverWatched);
+            writeWatchedCache(serverWatched);
+        } catch (error) {
+            console.error("Failed to refresh watched state:", error);
+        }
+    }, []);
+
+    useEffect(() => {
+        window.addEventListener("focus", refreshWatchedState);
+        return () => window.removeEventListener("focus", refreshWatchedState);
+    }, [refreshWatchedState]);
 
     // Enrich channels missing thumbnail/description and persist the enrichment server-side
     useEffect(() => {
@@ -379,6 +401,7 @@ export default function Dashboard() {
                     onRemoveChannel={removeChannel}
                     onUpdateSettings={updateSettings}
                     onImportData={handleImportData}
+                    onWatchedReconciled={refreshWatchedState}
                     onClose={() => setShowSettings(false)}
                 />
             )}

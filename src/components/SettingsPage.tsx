@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import ChannelSettings from "./ChannelSettings";
+import AppNavbar from "./AppNavbar";
 import type { YouTubeChannel } from "@/types/youtube";
 import {
     type AppSettings,
@@ -24,7 +24,6 @@ import {
 } from "@/lib/storage-client";
 
 export default function SettingsPage() {
-    const router = useRouter();
     const [channels, setChannels] = useState<YouTubeChannel[]>([]);
     const [watchedIds, setWatchedIds] = useState<string[]>([]);
     const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -117,16 +116,20 @@ export default function SettingsPage() {
 
     if (loading) {
         return (
-            <main className="flex min-h-screen items-center justify-center bg-background text-zinc-500">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading settings…
-            </main>
+            <div className="min-h-screen bg-background text-foreground">
+                <AppNavbar activeSection="settings" />
+                <main className="flex min-h-[60vh] items-center justify-center text-zinc-500">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading settings…
+                </main>
+            </div>
         );
     }
 
     return (
-        <>
+        <div className="min-h-screen bg-background text-foreground">
+            <AppNavbar activeSection="settings" />
             {error && (
-                <div className="fixed left-1/2 top-4 z-50 flex w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 items-start gap-2 rounded-lg border border-amber-900/50 bg-amber-950 p-3 text-xs text-amber-200 shadow-xl">
+                <div className="fixed left-1/2 top-20 z-50 flex w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 items-start gap-2 rounded-lg border border-amber-900/50 bg-amber-950 p-3 text-xs text-amber-200 shadow-xl">
                     <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
                 </div>
             )}
@@ -139,8 +142,7 @@ export default function SettingsPage() {
                 onUpdateSettings={updateSettings}
                 onImportData={importData}
                 onWatchedReconciled={refreshWatched}
-                onClose={() => router.push("/")}
             />
-        </>
+        </div>
     );
 }

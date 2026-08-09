@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, Search, Plus, Trash2, Settings, Loader2, Download, Upload } from "lucide-react";
+import { Search, Plus, Trash2, Loader2, Download, Upload, Database } from "lucide-react";
 import { YouTubeChannel } from "@/types/youtube";
 import { AppSettings, SearchResultChannel, searchChannels } from "@/lib/storage-client";
 import Image from "next/image";
@@ -18,7 +18,6 @@ interface ChannelSettingsProps {
     onUpdateSettings: (settings: AppSettings) => void | Promise<void>;
     onImportData: (channels: YouTubeChannel[], watchedIds: string[]) => void | Promise<void>;
     onWatchedReconciled: () => void | Promise<void>;
-    onClose: () => void;
 }
 
 function SettingLabel({ htmlFor, label, help }: { htmlFor: string; label: string; help: string }) {
@@ -39,7 +38,6 @@ export default function ChannelSettings({
     onUpdateSettings,
     onImportData,
     onWatchedReconciled,
-    onClose,
 }: ChannelSettingsProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<SearchResultChannel[]>([]);
@@ -203,47 +201,17 @@ export default function ChannelSettings({
     );
 
     return (
-        <div className="min-h-screen bg-background px-4 py-6 text-foreground md:px-8 md:py-10">
-            <div className="mx-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-zinc-800 p-6 flex-shrink-0">
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-2">
-                            <Settings className="h-5 w-5 text-zinc-400" />
-                            <h1 className="text-xl font-semibold text-white">Settings & Backup</h1>
-                        </div>
-                    </div>
+        <main className="bg-background px-4 py-8 text-foreground md:px-8 md:py-10">
+            <div className="mx-auto w-full max-w-7xl space-y-10">
+                <header className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-400">Configuration</p>
+                    <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
+                    <p className="max-w-3xl text-sm leading-relaxed text-zinc-500">
+                        Manage the automatic playlist, YouTube quota, catalogue filters, subscriptions and backups.
+                    </p>
+                </header>
 
-                    <div className="flex items-center space-x-2">
-                        <div className="flex items-center bg-zinc-800/50 rounded-lg p-1 border border-zinc-700">
-                            <button
-                                onClick={handleExport}
-                                className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-md transition-colors"
-                                title="Export data to JSON"
-                            >
-                                <Download className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">Export</span>
-                            </button>
-                            <div className="w-[1px] h-4 bg-zinc-700 mx-1" />
-                            <label className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-md transition-colors cursor-pointer" title="Import data from JSON">
-                                <Upload className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">Import</span>
-                                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
-                            </label>
-                        </div>
-
-                        <button
-                            onClick={onClose}
-                            aria-label="Back to Fresh Music"
-                            className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
-                        >
-                            <ArrowLeft className="h-6 w-6" />
-                        </button>
-                    </div>
-                </div>
-
-                {/* Content */}
-                <div className="space-y-8 p-6">
+                <div className="space-y-10">
                     {/* YouTube Playlist Section */}
                     <section className="space-y-4">
                         <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Automatic Playlist</h3>
@@ -276,7 +244,7 @@ export default function ChannelSettings({
                                 />
                             </div>
 
-                            <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
                                 <div>
                                     <SettingLabel
                                         htmlFor="sync-interval"
@@ -378,6 +346,7 @@ export default function ChannelSettings({
                         </div>
                     </section>
 
+                    <div className="grid items-start gap-8 lg:grid-cols-2">
                     {/* Fetch Window Section */}
                     <section className="space-y-4">
                         <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Video Window</h3>
@@ -481,7 +450,9 @@ export default function ChannelSettings({
                             {settingsSaveError && <p className="text-xs text-red-400">{settingsSaveError}</p>}
                         </div>
                     </section>
+                    </div>
 
+                    <div className="grid items-start gap-8 lg:grid-cols-2">
                     {/* Search Section */}
                     <section className="space-y-4">
                         <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Follow New Channels</h3>
@@ -574,18 +545,40 @@ export default function ChannelSettings({
                             )}
                         </div>
                     </section>
-                </div>
+                    </div>
 
-                {/* Footer */}
-                <div className="border-t border-zinc-800 bg-zinc-900/50 p-6 flex-shrink-0">
-                    <button
-                        onClick={onClose}
-                        className="w-full rounded-lg bg-zinc-800 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700 transition-colors"
-                    >
-                        Back to Fresh Music
-                    </button>
+                    <section className="space-y-4">
+                        <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">Data &amp; Backup</h3>
+                        <div className="flex flex-col gap-5 rounded-xl border border-zinc-800 bg-zinc-800/30 p-5 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="rounded-lg bg-zinc-800 p-2 text-zinc-400">
+                                    <Database className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-white">Portable Fresh Music backup</p>
+                                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-500">
+                                        Export subscriptions, watched videos and settings to JSON, or restore them from a previous export.
+                                        Importing replaces the corresponding data currently stored by the application.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                                <button
+                                    type="button"
+                                    onClick={handleExport}
+                                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-white"
+                                >
+                                    <Download className="h-4 w-4" /> Export backup
+                                </button>
+                                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-900 transition-colors hover:bg-white">
+                                    <Upload className="h-4 w-4" /> Import backup
+                                    <input type="file" accept=".json,application/json" onChange={handleImport} className="sr-only" />
+                                </label>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

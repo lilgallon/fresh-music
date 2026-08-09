@@ -19,8 +19,9 @@ import {
 } from "@/lib/storage-client";
 import VideoCard from "./VideoCard";
 import VideoModal from "./VideoModal";
-import { AlertTriangle, Music, History, PlayCircle, Loader2, Music2, Settings2 } from "lucide-react";
-import Link from "next/link";
+import { AlertTriangle, Music, History, Loader2 } from "lucide-react";
+import AppNavbar from "./AppNavbar";
+import YouTubeQuotaBanner from "./YouTubeQuotaBanner";
 
 export default function Dashboard() {
     const [videos, setVideos] = useState<YouTubeVideo[]>([]);
@@ -36,6 +37,9 @@ export default function Dashboard() {
 
     // Initial hydration: localStorage first (instant render), then reconcile with server
     useEffect(() => {
+        const requestedTab = new URLSearchParams(window.location.search).get("tab");
+        if (requestedTab === "history" || requestedTab === "new") setActiveTab(requestedTab);
+
         const cachedChannels = readChannelsCache();
         const cachedWatched = readWatchedCache();
         const cachedSettings = readSettingsCache();
@@ -63,6 +67,12 @@ export default function Dashboard() {
             }
         })();
     }, []);
+
+    const selectTab = (tab: "new" | "history") => {
+        setActiveTab(tab);
+        const url = tab === "history" ? "/?tab=history" : "/";
+        window.history.replaceState({}, "", url);
+    };
 
     // Mirror state into localStorage cache once we are hydrated
     useEffect(() => {
@@ -173,79 +183,11 @@ export default function Dashboard() {
 
     return (
         <div className="min-h-screen bg-background text-foreground selection:bg-zinc-800">
-            {/* Header */}
-            <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8">
-                    <div className="flex items-center space-x-2">
-                        <div className="rounded-lg bg-primary p-1.5 text-primary-foreground focus-within:ring-2">
-                            <Music2 className="h-5 w-5" />
-                        </div>
-                        <h1 className="text-xl font-bold tracking-tight">Fresh Music</h1>
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-                        <nav className="hidden sm:flex space-x-1 rounded-lg bg-zinc-900/50 p-1">
-                            <button
-                                onClick={() => setActiveTab("new")}
-                                className={`flex items-center space-x-2 rounded-md px-3 py-1.5 text-sm font-medium ${activeTab === "new"
-                                    ? "bg-zinc-800 text-white shadow-sm"
-                                    : "text-zinc-500 hover:text-zinc-300"
-                                    }`}
-                            >
-                                <PlayCircle className="h-4 w-4" />
-                                <span>New</span>
-                            </button>
-                            <button
-                                onClick={() => setActiveTab("history")}
-                                className={`flex items-center space-x-2 rounded-md px-3 py-1.5 text-sm font-medium ${activeTab === "history"
-                                    ? "bg-zinc-800 text-white shadow-sm"
-                                    : "text-zinc-500 hover:text-zinc-300"
-                                    }`}
-                            >
-                                <History className="h-4 w-4" />
-                                <span>History</span>
-                            </button>
-                        </nav>
-
-                        <Link
-                            href="/settings"
-                            aria-label="Open settings"
-                            className="rounded-full bg-zinc-900 p-2.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors border border-zinc-800"
-                        >
-                            <Settings2 className="h-5 w-5" />
-                        </Link>
-                    </div>
-                </div>
-
-                {/* Mobile Tabs */}
-                <div className="sm:hidden flex justify-center border-t border-zinc-900 bg-zinc-950 px-4 py-2">
-                    <nav className="flex w-full space-x-1 rounded-lg bg-zinc-900/50 p-1">
-                        <button
-                            onClick={() => setActiveTab("new")}
-                            className={`flex-1 flex items-center justify-center space-x-2 rounded-md py-1.5 text-sm font-medium ${activeTab === "new"
-                                ? "bg-zinc-800 text-white shadow-sm"
-                                : "text-zinc-500 hover:text-zinc-300"
-                                }`}
-                        >
-                            <PlayCircle className="h-4 w-4" />
-                            <span>New</span>
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("history")}
-                            className={`flex-1 flex items-center justify-center space-x-2 rounded-md py-1.5 text-sm font-medium ${activeTab === "history"
-                                ? "bg-zinc-800 text-white shadow-sm"
-                                : "text-zinc-500 hover:text-zinc-300"
-                                }`}
-                        >
-                            <History className="h-4 w-4" />
-                            <span>History</span>
-                        </button>
-                    </nav>
-                </div>
-            </header>
+            <AppNavbar activeSection={activeTab} onSelectTab={selectTab} />
 
             {/* Main Content */}
             <main className="mx-auto max-w-7xl px-4 py-8 md:px-8">
+                <YouTubeQuotaBanner />
                 {videoLoadError && !loading && (
                     <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-900/50 bg-amber-950/20 p-4 text-amber-200">
                         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />

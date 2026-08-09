@@ -9,14 +9,15 @@ import type {
     YouTubeIntegrationRecord,
     YouTubePlaylistEntry,
 } from "./youtube-integration-repository";
-import type { YouTubeContentFilterRules } from "./youtube-content-filter";
+import type { AppSettings } from "@/types/settings";
+import type { YouTubeSyncPhase } from "@/types/youtube-integration";
 
 export interface PlaylistSyncStore {
     getIntegration(): YouTubeIntegrationRecord | null;
     listChannels(): YouTubeChannel[];
     listWatched(): string[];
     markWatched(videoId: string): void;
-    getSettings(): YouTubeContentFilterRules & { videoLookbackDays: number };
+    getSettings(): AppSettings;
     listEntries(): YouTubePlaylistEntry[];
     prepareEntry(params: {
         videoId: string;
@@ -53,6 +54,7 @@ export interface PlaylistSyncDependencies {
     getAccessToken(): Promise<string>;
     now(): number;
     intervalMs: number;
+    onProgress?: (phase: YouTubeSyncPhase, values?: Record<string, number>) => void;
 }
 
 export class PlaylistSyncConfigurationError extends Error {
@@ -215,10 +217,24 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
         let added = 0;
         let removed = 0;
         let discovered = 0;
+        let adopted = 0;
+        let skippedWatched = 0;
+        let skippedFiltered = 0;
+        let skippedExisting = 0;
         let accessToken: string | null = null;
 
         try {
             accessToken = await dependencies.getAccessToken();
+            const settings = dependencies.store.getSettings();
+            const channels = dependencies.store.listChannels();
+            const videos = await dependencies.youtube.discoverVideos(
+                accessToken,
+                channels,
+                settings.videoLookbackDays,
+                settings
+            );
+            discovered = videos.length;
+            dependencies.onProgress?.("reading_playlist");
             const remoteItems = await dependencies.youtube.listPlaylistItems(
                 accessToken,
                 integration.playlistId
@@ -226,7 +242,10 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
 
             const entries = dependencies.store.listEntries();
             const reconciledVideoIds = new Set<string>();
-            const settings = dependencies.store.getSettings();
+            dependencies.onProgress?.("reading_playlist", { remoteItems: remoteItems.length });
+
+            let removalsRemaining = settings.maxPlaylistRemovalsPerSync;
+            dependencies.onProgress?.("removing");
 
             const filterCandidates = entries.filter((entry) =>
                 entry.managedByApp && (entry.state === "active" || entry.state === "adding")
@@ -239,18 +258,33 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
             for (const entry of filterCandidates.filter((candidate) =>
                 ignoredVideoIds.has(candidate.videoId)
             )) {
-                if (
-                    entry.state === "active"
-                    && await deletePendingEntry(dependencies, accessToken, remoteItems, entry, "filtered")
-                ) removed += 1;
+                skippedFiltered += 1;
                 if (entry.state === "adding") {
-                    dependencies.store.markEntryRemoved(entry.videoId, "filtered");
+                    const remote = remoteItems.find((item) => item.videoId === entry.videoId);
+                    if (!remote) {
+                        dependencies.store.markEntryRemoved(entry.videoId, "filtered");
+                    } else if (removalsRemaining > 0) {
+                        if (await deletePendingEntry(dependencies, accessToken, remoteItems, entry, "filtered")) {
+                            removed += 1;
+                            removalsRemaining -= 1;
+                        }
+                    } else {
+                        continue;
+                    }
+                } else if (
+                    removalsRemaining > 0
+                    && await deletePendingEntry(dependencies, accessToken, remoteItems, entry, "filtered")
+                ) {
+                    removed += 1;
+                    removalsRemaining -= 1;
                 }
                 reconciledVideoIds.add(entry.videoId);
             }
 
             for (const entry of entries.filter((candidate) => candidate.state === "removal_pending")) {
+                if (removalsRemaining <= 0) break;
                 if (await deletePendingEntry(dependencies, accessToken, remoteItems, entry)) removed += 1;
+                removalsRemaining -= 1;
                 reconciledVideoIds.add(entry.videoId);
             }
 
@@ -260,12 +294,18 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
                 && candidate.managedByApp
                 && initiallyWatched.has(candidate.videoId)
             )) {
+                if (removalsRemaining <= 0) break;
                 if (reconciledVideoIds.has(entry.videoId)) continue;
-                if (await deletePendingEntry(dependencies, accessToken, remoteItems, entry)) removed += 1;
+                if (await deletePendingEntry(dependencies, accessToken, remoteItems, entry)) {
+                    removed += 1;
+                    removalsRemaining -= 1;
+                }
                 reconciledVideoIds.add(entry.videoId);
             }
 
-            for (const entry of entries.filter((candidate) => candidate.state === "active")) {
+            for (const entry of entries.filter((candidate) =>
+                candidate.state === "active" && candidate.managedByApp
+            )) {
                 if (reconciledVideoIds.has(entry.videoId)) continue;
                 const remote = findRemoteItem(remoteItems, entry);
                 if (!remote) {
@@ -283,37 +323,58 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
                 }
             }
 
+            const watchedBeforeAdds = new Set(dependencies.store.listWatched());
             for (const entry of entries.filter((candidate) => candidate.state === "adding")) {
                 if (reconciledVideoIds.has(entry.videoId)) continue;
-                if (await insertPreparedEntry(
-                    dependencies,
-                    accessToken,
-                    integration.playlistId,
-                    remoteItems,
-                    entry
-                )) added += 1;
+                if (watchedBeforeAdds.has(entry.videoId)) {
+                    skippedWatched += 1;
+                    const remote = remoteItems.find((item) => item.videoId === entry.videoId);
+                    if (!remote) {
+                        dependencies.store.markEntryRemoved(entry.videoId, "watched");
+                        reconciledVideoIds.add(entry.videoId);
+                    } else if (removalsRemaining > 0) {
+                        if (await deletePendingEntry(dependencies, accessToken, remoteItems, entry)) {
+                            removed += 1;
+                            removalsRemaining -= 1;
+                        }
+                        reconciledVideoIds.add(entry.videoId);
+                    }
+                    continue;
+                }
+                const remote = remoteItems.find((item) => item.videoId === entry.videoId);
+                if (remote) {
+                    dependencies.store.activateEntry({
+                        videoId: entry.videoId,
+                        playlistItemId: remote.id,
+                        managedByApp: entry.managedByApp,
+                        sourceChannelId: entry.sourceChannelId,
+                        publishedAt: entry.publishedAt,
+                    });
+                    adopted += 1;
+                    reconciledVideoIds.add(entry.videoId);
+                }
             }
 
-            const channels = dependencies.store.listChannels();
-            const videos = await dependencies.youtube.discoverVideos(
-                accessToken,
-                channels,
-                settings.videoLookbackDays,
-                settings
-            );
-            discovered = videos.length;
+            dependencies.onProgress?.("adding", {
+                pendingRemovals: entries.filter((entry) => entry.state === "removal_pending").length,
+                removed,
+            });
 
             const watched = new Set(dependencies.store.listWatched());
             const latestEntries = new Map(
                 dependencies.store.listEntries().map((entry) => [entry.videoId, entry])
             );
             for (const video of videos) {
-                if (watched.has(video.id)) continue;
+                if (watched.has(video.id) || dependencies.store.listWatched().includes(video.id)) {
+                    skippedWatched += 1;
+                    continue;
+                }
 
                 const existing = latestEntries.get(video.id);
-                if (existing?.state === "active" || existing?.state === "removal_pending") continue;
-                if (existing?.state === "adding") continue;
-
+                if (existing?.state === "active" || existing?.state === "removal_pending") {
+                    skippedExisting += 1;
+                    continue;
+                }
                 const remote = remoteItems.find((item) => item.videoId === video.id);
                 if (remote) {
                     dependencies.store.activateEntry({
@@ -323,25 +384,32 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
                         sourceChannelId: video.sourceChannelId,
                         publishedAt: video.publishedAt,
                     });
+                    adopted += 1;
                     continue;
                 }
 
-                dependencies.store.prepareEntry({
-                    videoId: video.id,
-                    sourceChannelId: video.sourceChannelId,
-                    publishedAt: video.publishedAt,
-                    managedByApp: true,
-                });
-                const prepared: YouTubePlaylistEntry = {
-                    videoId: video.id,
-                    sourceChannelId: video.sourceChannelId,
-                    publishedAt: video.publishedAt,
-                    playlistItemId: null,
-                    state: "adding" as PlaylistEntryState,
-                    managedByApp: true,
-                    removalReason: null,
-                    lastError: null,
-                };
+                if (added >= settings.maxPlaylistAddsPerSync) continue;
+
+                if (!existing || existing.state !== "adding") {
+                    dependencies.store.prepareEntry({
+                        videoId: video.id,
+                        sourceChannelId: video.sourceChannelId,
+                        publishedAt: video.publishedAt,
+                        managedByApp: true,
+                    });
+                }
+                const prepared: YouTubePlaylistEntry = existing?.state === "adding"
+                    ? existing
+                    : {
+                        videoId: video.id,
+                        sourceChannelId: video.sourceChannelId,
+                        publishedAt: video.publishedAt,
+                        playlistItemId: null,
+                        state: "adding" as PlaylistEntryState,
+                        managedByApp: true,
+                        removalReason: null,
+                        lastError: null,
+                    };
                 if (await insertPreparedEntry(
                     dependencies,
                     accessToken,
@@ -349,6 +417,13 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
                     remoteItems,
                     prepared
                 )) added += 1;
+                dependencies.onProgress?.("adding", {
+                    added,
+                    adopted,
+                    skippedWatched,
+                    skippedFiltered,
+                    skippedExisting,
+                });
             }
 
             const completedAt = dependencies.now();

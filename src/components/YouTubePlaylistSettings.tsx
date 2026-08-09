@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
     AlertTriangle,
+    ChevronDown,
     ExternalLink,
     Link2,
     Link2Off,
@@ -17,6 +18,8 @@ import {
     syncYouTubePlaylist,
 } from "@/lib/storage-client";
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
+import SettingHelpTooltip from "./SettingHelpTooltip";
+import type { AppSettings } from "@/types/settings";
 
 type Action = "sync" | "recreate" | "disconnect" | null;
 
@@ -26,6 +29,12 @@ function formatDate(value: string | null): string {
         dateStyle: "medium",
         timeStyle: "short",
     }).format(new Date(value));
+}
+
+function formatDuration(startedAt: string, completedAt: string | null): string {
+    const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+    const seconds = Math.max(0, Math.round((end - new Date(startedAt).getTime()) / 1000));
+    return `${seconds}s`;
 }
 
 function statusLabel(status: YouTubeIntegrationPublicStatus["sync"]["status"]): string {
@@ -40,15 +49,21 @@ function statusLabel(status: YouTubeIntegrationPublicStatus["sync"]["status"]): 
     }
 }
 
-interface YouTubePlaylistSettingsProps {
-    onWatchedReconciled: () => void | Promise<void>;
+function phaseLabel(phase: NonNullable<YouTubeIntegrationPublicStatus["progress"]>["phase"]): string {
+    return phase.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
-export default function YouTubePlaylistSettings({ onWatchedReconciled }: YouTubePlaylistSettingsProps) {
+interface YouTubePlaylistSettingsProps {
+    onWatchedReconciled: () => void | Promise<void>;
+    settings: AppSettings;
+}
+
+export default function YouTubePlaylistSettings({ onWatchedReconciled, settings }: YouTubePlaylistSettingsProps) {
     const [status, setStatus] = useState<YouTubeIntegrationPublicStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [action, setAction] = useState<Action>(null);
     const [error, setError] = useState<string | null>(null);
+    const [showDetails, setShowDetails] = useState(false);
 
     const refresh = useCallback(async () => {
         try {
@@ -70,6 +85,13 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled }: YouTube
             window.history.replaceState({}, "", window.location.pathname);
         }
     }, [refresh]);
+
+    useEffect(() => {
+        if (!status?.connected) return;
+        const delay = status.progress?.status === "running" ? 2_000 : 30_000;
+        const timer = window.setTimeout(refresh, delay);
+        return () => window.clearTimeout(timer);
+    }, [refresh, status]);
 
     const runAction = async (
         name: Exclude<Action, null>,
@@ -139,7 +161,17 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled }: YouTube
 
     const needsAttention = status.sync.status === "error"
         || status.sync.status === "reauthorization_required"
-        || status.sync.status === "playlist_missing";
+        || status.sync.status === "playlist_missing"
+        || status.progress?.status === "failed"
+        || status.progress?.status === "paused";
+    const progress = status.progress;
+    const running = progress?.status === "running";
+    const quotaTotalPercent = Math.min(100, status.quota.totalLimit > 0
+        ? status.quota.estimatedTotalUnits / status.quota.totalLimit * 100
+        : 0);
+    const quotaWritePercent = Math.min(100, status.quota.writeLimit > 0
+        ? status.quota.writeUnits / status.quota.writeLimit * 100
+        : 0);
 
     return (
         <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-800/30 p-4">
@@ -153,7 +185,13 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled }: YouTube
                             {status.account?.title ?? "Connected YouTube account"}
                         </p>
                         <p className={`mt-0.5 text-xs ${needsAttention ? "text-amber-400" : "text-emerald-400"}`}>
-                            {statusLabel(status.sync.status)}
+                            {running
+                                ? phaseLabel(progress.phase)
+                                : progress?.status === "paused"
+                                    ? "Sync paused"
+                                    : progress?.status === "failed"
+                                        ? "Sync failed"
+                                        : statusLabel(status.sync.status)}
                         </p>
                     </div>
                 </div>
@@ -190,26 +228,131 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled }: YouTube
 
             <dl className="grid grid-cols-2 gap-3 rounded-lg bg-zinc-950/30 p-3 text-xs sm:grid-cols-4">
                 <div>
-                    <dt className="text-zinc-600">Last sync</dt>
-                    <dd className="mt-1 text-zinc-300">{formatDate(status.sync.lastCompletedAt)}</dd>
+                    <dt className="flex items-center gap-1 text-zinc-600">Last successful sync
+                        <SettingHelpTooltip label="Last successful sync">Last completed playlist reconciliation, distinct from catalogue discovery.</SettingHelpTooltip>
+                    </dt>
+                    <dd className="mt-1 text-zinc-300">{formatDate(status.sync.lastSuccessfulAt)}</dd>
+                </div>
+                <div>
+                    <dt className="text-zinc-600">Last attempt</dt>
+                    <dd className="mt-1 text-zinc-300">{formatDate(progress?.startedAt ?? status.sync.lastStartedAt)}</dd>
                 </div>
                 <div>
                     <dt className="text-zinc-600">Next sync</dt>
                     <dd className="mt-1 text-zinc-300">{formatDate(status.sync.nextSyncAt)}</dd>
                 </div>
                 <div>
-                    <dt className="text-zinc-600">Added</dt>
-                    <dd className="mt-1 text-zinc-300">{status.sync.added}</dd>
+                    <dt className="text-zinc-600">Last added / removed</dt>
+                    <dd className="mt-1 text-zinc-300">{progress?.added ?? status.sync.added} / {progress?.removed ?? status.sync.removed}</dd>
                 </div>
                 <div>
-                    <dt className="text-zinc-600">Removed</dt>
-                    <dd className="mt-1 text-zinc-300">{status.sync.removed}</dd>
+                    <dt className="flex items-center gap-1 text-zinc-600">Pending additions
+                        <SettingHelpTooltip label="Pending additions">Eligible tracks waiting for a future run because of per-sync or quota limits.</SettingHelpTooltip>
+                    </dt>
+                    <dd className="mt-1 text-zinc-300">{progress?.pendingAdds ?? 0}</dd>
+                </div>
+                <div>
+                    <dt className="flex items-center gap-1 text-zinc-600">Pending removals
+                        <SettingHelpTooltip label="Pending removals">Watched or filtered tracks retained locally and retried automatically.</SettingHelpTooltip>
+                    </dt>
+                    <dd className="mt-1 text-zinc-300">{progress?.pendingRemovals ?? 0}</dd>
                 </div>
             </dl>
+            <p className="flex items-center gap-1 text-xs text-zinc-600">
+                Catalogue last updated {formatDate(status.catalog.lastDiscoveryAt)}
+                <SettingHelpTooltip label="Catalogue last updated">Discovery updates the local catalogue; playlist synchronization then reconciles that stored catalogue with YouTube.</SettingHelpTooltip>
+            </p>
 
-            {(error || status.sync.error) && (
+            {status.quota.pausedUntil && (
+                <p className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-300">
+                    YouTube calls are paused until {formatDate(status.quota.pausedUntil)}.
+                </p>
+            )}
+            {!status.quota.pausedUntil && progress?.status === "paused" && status.quota.remainingMutations === 0 && (
+                <p className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-300">
+                    Playlist writes are suspended until the budget resets on {formatDate(status.quota.resetAt)},
+                    or until you increase the configured budget.
+                </p>
+            )}
+
+            {(quotaTotalPercent >= 80 || quotaWritePercent >= 80) && (
+                <p className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-300">
+                    At least 80% of a configured daily quota limit has been used.
+                </p>
+            )}
+
+            <div className="space-y-3 rounded-lg bg-zinc-950/30 p-3 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1 text-zinc-500">Estimated total usage
+                        <SettingHelpTooltip label="Estimated total usage">Fresh Music counts its own requests. The Google Cloud console remains authoritative if the project is shared.</SettingHelpTooltip>
+                    </span>
+                    <span className="text-zinc-300">{status.quota.estimatedTotalUnits} / {status.quota.totalLimit}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                    <div className={`h-full ${quotaTotalPercent >= 80 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${quotaTotalPercent}%` }} />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1 text-zinc-500">Write budget
+                        <SettingHelpTooltip label="Write budget">Playlist mutations cost 50 units each. This separate limit preserves quota for discovery reads.</SettingHelpTooltip>
+                    </span>
+                    <span className="text-zinc-300">{status.quota.writeUnits} / {status.quota.writeLimit}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                    <div className={`h-full ${quotaWritePercent >= 80 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${quotaWritePercent}%` }} />
+                </div>
+                <div className="flex flex-wrap justify-between gap-2 text-zinc-600">
+                    <span>{status.quota.remainingMutations} mutations remaining</span>
+                    <span>{status.quota.searchCalls} channel searches</span>
+                    <span className="flex items-center gap-1">Reset {formatDate(status.quota.resetAt)}
+                        <SettingHelpTooltip label="Quota reset">YouTube resets quota at midnight Pacific Time; this timestamp is displayed in your browser&apos;s local time.</SettingHelpTooltip>
+                    </span>
+                </div>
+            </div>
+
+            {running && progress && (
+                <div className="space-y-2 rounded-lg border border-blue-900/40 bg-blue-950/20 p-3 text-xs text-blue-200">
+                    <div className="flex justify-between"><span>{phaseLabel(progress.phase)}</span><span>{progress.channelsProcessed}/{progress.channelsTotal} channels</span></div>
+                    <div className="grid grid-cols-2 gap-2 text-blue-200/70 sm:grid-cols-4">
+                        <span>{progress.discovered} discovered</span>
+                        <span>{progress.catalogued} catalogued</span>
+                        <span>{progress.removed}/{settings.maxPlaylistRemovalsPerSync} removals</span>
+                        <span>{progress.added}/{settings.maxPlaylistAddsPerSync} additions</span>
+                    </div>
+                </div>
+            )}
+
+            {progress && (
+                <div className="rounded-lg border border-zinc-800">
+                    <button type="button" onClick={() => setShowDetails((value) => !value)}
+                        className="flex w-full items-center justify-between p-3 text-xs font-medium text-zinc-300 hover:bg-zinc-800/40">
+                        Details of the last sync
+                        <ChevronDown className={`h-4 w-4 transition-transform ${showDetails ? "rotate-180" : ""}`} />
+                    </button>
+                    {showDetails && (
+                        <dl className="grid grid-cols-2 gap-3 border-t border-zinc-800 p-3 text-xs text-zinc-500 sm:grid-cols-3">
+                            <div><dt>Trigger</dt><dd className="text-zinc-300">{progress.trigger}</dd></div>
+                            <div><dt>Started</dt><dd className="text-zinc-300">{formatDate(progress.startedAt)}</dd></div>
+                            <div><dt>Completed</dt><dd className="text-zinc-300">{formatDate(progress.completedAt)}</dd></div>
+                            <div><dt>Duration</dt><dd className="text-zinc-300">{formatDuration(progress.startedAt, progress.completedAt)}</dd></div>
+                            <div><dt>Channels</dt><dd className="text-zinc-300">{progress.channelsProcessed}/{progress.channelsTotal}</dd></div>
+                            <div><dt>Discovered</dt><dd className="text-zinc-300">{progress.discovered}</dd></div>
+                            <div><dt>Catalogued</dt><dd className="text-zinc-300">{progress.catalogued}</dd></div>
+                            <div><dt>Remote items</dt><dd className="text-zinc-300">{progress.remoteItems}</dd></div>
+                            <div><dt>Added / removed</dt><dd className="text-zinc-300">{progress.added} / {progress.removed}</dd></div>
+                            <div><dt>Pending add / remove</dt><dd className="text-zinc-300">{progress.pendingAdds} / {progress.pendingRemovals}</dd></div>
+                            <div><dt>Manual remote items</dt><dd className="text-zinc-300">{progress.adopted}</dd></div>
+                            <div><dt>Skipped watched</dt><dd className="text-zinc-300">{progress.skippedWatched}</dd></div>
+                            <div><dt>Skipped filtered</dt><dd className="text-zinc-300">{progress.skippedFiltered}</dd></div>
+                            <div><dt>Skipped existing</dt><dd className="text-zinc-300">{progress.skippedExisting}</dd></div>
+                            <div><dt>Quota this run</dt><dd className="text-zinc-300">{progress.quotaReadUnits + progress.quotaWriteUnits}</dd></div>
+                        </dl>
+                    )}
+                </div>
+            )}
+
+            {(error || status.sync.error || progress?.error) && (
                 <p className="rounded-lg border border-red-900/40 bg-red-950/20 p-3 text-xs leading-relaxed text-red-300">
-                    {error || status.sync.error}
+                    {error || status.sync.error || progress?.error}
                 </p>
             )}
 
@@ -221,13 +364,13 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled }: YouTube
             <div className="flex flex-wrap gap-2 border-t border-zinc-800 pt-4">
                 <button
                     onClick={() => runAction("sync", syncYouTubePlaylist)}
-                    disabled={action !== null || status.sync.status === "playlist_missing"}
+                    disabled={action !== null || running || status.sync.status === "playlist_missing" || !status.playlist}
                     className="inline-flex items-center gap-2 rounded-lg bg-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     {action === "sync" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                     Sync now
                 </button>
-                {status.sync.status === "playlist_missing" && (
+                {(status.sync.status === "playlist_missing" || !status.playlist) && (
                     <button
                         onClick={() => runAction("recreate", recreateYouTubePlaylist)}
                         disabled={action !== null}

@@ -16,13 +16,10 @@ import {
 import { getYouTubeAccessToken } from "./youtube-oauth";
 import { youtubeGateway } from "./youtube-api-server";
 import { createPlaylistSyncRunner } from "./playlist-sync-core";
+import type { YouTubeSyncPhase, YouTubeSyncResult } from "@/types/youtube-integration";
 
 export function getPlaylistSyncIntervalMs(): number {
-    const configured = Number(process.env.PLAYLIST_SYNC_INTERVAL_MINUTES ?? 60);
-    const minutes = Number.isFinite(configured)
-        ? Math.min(1440, Math.max(5, Math.round(configured)))
-        : 60;
-    return minutes * 60 * 1000;
+    return getSettings().syncIntervalMinutes * 60 * 1000;
 }
 
 const store = {
@@ -40,13 +37,25 @@ const store = {
     finishSync: finishYouTubeSync,
 };
 
-export const synchronizeYouTubePlaylist = createPlaylistSyncRunner({
-    store,
-    youtube: youtubeGateway,
-    getAccessToken: getYouTubeAccessToken,
-    now: Date.now,
-    intervalMs: getPlaylistSyncIntervalMs(),
-});
+let runningSync: Promise<YouTubeSyncResult> | null = null;
+
+export function synchronizeYouTubePlaylist(
+    onProgress?: (phase: YouTubeSyncPhase, values?: Record<string, number>) => void
+): Promise<YouTubeSyncResult> {
+    if (runningSync) return runningSync;
+    const runner = createPlaylistSyncRunner({
+        store,
+        youtube: youtubeGateway,
+        getAccessToken: getYouTubeAccessToken,
+        now: Date.now,
+        intervalMs: getPlaylistSyncIntervalMs(),
+        onProgress,
+    });
+    runningSync = runner().finally(() => {
+        runningSync = null;
+    });
+    return runningSync;
+}
 
 function isMissingRemoteItemError(error: unknown): boolean {
     const apiError = error as { status?: number; reason?: string | null };

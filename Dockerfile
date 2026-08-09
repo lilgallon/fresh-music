@@ -16,12 +16,6 @@ COPY . .
 # Disables telemetry
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Build the application
-# Note: NEXT_PUBLIC_YOUTUBE_API_KEY should be passed as a build arg if needed for static generation
-# but here it's mainly used client-side. If any page is pre-rendered and uses it, it needs to be set.
-ARG NEXT_PUBLIC_YOUTUBE_API_KEY
-ENV NEXT_PUBLIC_YOUTUBE_API_KEY=$NEXT_PUBLIC_YOUTUBE_API_KEY
-
 RUN npm run build
 
 # Production Stage

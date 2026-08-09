@@ -1,19 +1,9 @@
 import { getDb } from "./db";
 import { YouTubeChannel } from "@/types/youtube";
+import { AppSettings, DEFAULT_SETTINGS } from "@/types/settings";
 
-export interface AppSettings {
-    videoLookbackDays: number;
-    excludedTitleTerms: string[];
-    minimumDurationSeconds: number | null;
-    maximumDurationSeconds: number | null;
-}
-
-export const DEFAULT_SETTINGS: AppSettings = {
-    videoLookbackDays: 30,
-    excludedTitleTerms: [],
-    minimumDurationSeconds: null,
-    maximumDurationSeconds: null,
-};
+export type { AppSettings } from "@/types/settings";
+export { DEFAULT_SETTINGS } from "@/types/settings";
 
 interface ChannelRow {
     channel_id: string;
@@ -112,8 +102,68 @@ export function replaceWatched(videoIds: string[]): void {
         db.prepare("DELETE FROM watched_videos").run();
         const insert = db.prepare("INSERT OR IGNORE INTO watched_videos (video_id) VALUES (?)");
         for (const id of list) insert.run(id);
+        db.prepare(
+            `INSERT OR IGNORE INTO videos (
+                video_id, title, channel_title, thumbnail_url, availability_status,
+                discovered_at, metadata_checked_at, updated_at
+             )
+             SELECT video_id, 'Video pending metadata', '', '', 'unavailable',
+                    unixepoch(), NULL, unixepoch()
+             FROM watched_videos`
+        ).run();
     });
     tx(videoIds);
+}
+
+export function bootstrapApplication(params: {
+    cachedChannels: YouTubeChannel[] | null;
+    cachedWatched: string[] | null;
+    cachedSettings: Partial<AppSettings> | null;
+    defaultChannels: YouTubeChannel[];
+}): { channels: YouTubeChannel[]; watchedIds: string[]; settings: AppSettings } {
+    const db = getDb();
+    db.transaction(() => {
+        const channelCount = db.prepare<[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM channels"
+        ).get()?.count ?? 0;
+        if (channelCount === 0) {
+            replaceChannels(
+                params.cachedChannels && params.cachedChannels.length > 0
+                    ? params.cachedChannels
+                    : params.defaultChannels
+            );
+        }
+
+        const watchedCount = db.prepare<[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM watched_videos"
+        ).get()?.count ?? 0;
+        if (watchedCount === 0 && params.cachedWatched && params.cachedWatched.length > 0) {
+            replaceWatched(params.cachedWatched);
+        }
+
+        db.prepare(
+            `INSERT OR IGNORE INTO videos (
+                video_id, title, channel_title, thumbnail_url, availability_status,
+                discovered_at, metadata_checked_at, updated_at
+             )
+             SELECT video_id, 'Video pending metadata', '', '', 'unavailable',
+                    unixepoch(), NULL, unixepoch()
+             FROM watched_videos`
+        ).run();
+
+        const hasUserSettings = db.prepare<[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM app_settings WHERE key = 'video_lookback_days'"
+        ).get()?.count ?? 0;
+        if (hasUserSettings === 0 && params.cachedSettings) saveSettings(params.cachedSettings);
+
+        db.prepare(
+            `INSERT INTO app_settings (key, value, updated_at)
+             VALUES ('initialization_completed', 'true', unixepoch())
+             ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = unixepoch()`
+        ).run();
+    })();
+
+    return { channels: listChannels(), watchedIds: listWatched(), settings: getSettings() };
 }
 
 function normalizeVideoLookbackDays(value: unknown): number {
@@ -145,6 +195,19 @@ function normalizeOptionalDuration(value: unknown): number | null {
     return Math.min(86_400, Math.max(0, Math.round(parsed)));
 }
 
+function normalizeInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(maximum, Math.max(minimum, Math.round(parsed)));
+}
+
+function normalizeBoolean(value: unknown, fallback: boolean): boolean {
+    if (typeof value === "boolean") return value;
+    if (value === "true" || value === "1") return true;
+    if (value === "false" || value === "0") return false;
+    return fallback;
+}
+
 export function getSettings(): AppSettings {
     const rows = getDb()
         .prepare<[], { key: string; value: string }>("SELECT key, value FROM app_settings")
@@ -165,6 +228,39 @@ export function getSettings(): AppSettings {
         excludedTitleTerms: normalizeTitleTerms(excludedTitleTerms),
         minimumDurationSeconds: normalizeOptionalDuration(values.get("minimum_duration_seconds")),
         maximumDurationSeconds: normalizeOptionalDuration(values.get("maximum_duration_seconds")),
+        automaticSyncEnabled: normalizeBoolean(
+            values.get("automatic_sync_enabled"), DEFAULT_SETTINGS.automaticSyncEnabled
+        ),
+        syncIntervalMinutes: normalizeInteger(
+            values.get("sync_interval_minutes"), DEFAULT_SETTINGS.syncIntervalMinutes, 5, 1440
+        ),
+        youtubeDailyQuotaUnits: normalizeInteger(
+            values.get("youtube_daily_quota_units"), DEFAULT_SETTINGS.youtubeDailyQuotaUnits, 50, 1_000_000
+        ),
+        youtubeDailyWriteBudgetUnits: normalizeInteger(
+            values.get("youtube_daily_write_budget_units"),
+            DEFAULT_SETTINGS.youtubeDailyWriteBudgetUnits,
+            0,
+            1_000_000
+        ),
+        maxPlaylistAddsPerSync: normalizeInteger(
+            values.get("max_playlist_adds_per_sync"), DEFAULT_SETTINGS.maxPlaylistAddsPerSync, 1, 1000
+        ),
+        maxPlaylistRemovalsPerSync: normalizeInteger(
+            values.get("max_playlist_removals_per_sync"),
+            DEFAULT_SETTINGS.maxPlaylistRemovalsPerSync,
+            1,
+            1000
+        ),
+        maxDiscoveryPagesPerChannel: normalizeInteger(
+            values.get("max_discovery_pages_per_channel"),
+            DEFAULT_SETTINGS.maxDiscoveryPagesPerChannel,
+            1,
+            100
+        ),
+        shortCacheTtlDays: normalizeInteger(
+            values.get("short_cache_ttl_days"), DEFAULT_SETTINGS.shortCacheTtlDays, 1, 365
+        ),
     };
 }
 
@@ -177,6 +273,21 @@ export function saveSettings(settings: Partial<AppSettings>): AppSettings {
     next.excludedTitleTerms = normalizeTitleTerms(next.excludedTitleTerms);
     next.minimumDurationSeconds = normalizeOptionalDuration(next.minimumDurationSeconds);
     next.maximumDurationSeconds = normalizeOptionalDuration(next.maximumDurationSeconds);
+    next.automaticSyncEnabled = normalizeBoolean(
+        next.automaticSyncEnabled, DEFAULT_SETTINGS.automaticSyncEnabled
+    );
+    next.syncIntervalMinutes = normalizeInteger(next.syncIntervalMinutes, 60, 5, 1440);
+    next.youtubeDailyQuotaUnits = normalizeInteger(
+        next.youtubeDailyQuotaUnits, 10_000, 50, 1_000_000
+    );
+    next.youtubeDailyWriteBudgetUnits = normalizeInteger(
+        next.youtubeDailyWriteBudgetUnits, 5_000, 0, next.youtubeDailyQuotaUnits
+    );
+    next.youtubeDailyWriteBudgetUnits -= next.youtubeDailyWriteBudgetUnits % 50;
+    next.maxPlaylistAddsPerSync = normalizeInteger(next.maxPlaylistAddsPerSync, 25, 1, 1000);
+    next.maxPlaylistRemovalsPerSync = normalizeInteger(next.maxPlaylistRemovalsPerSync, 25, 1, 1000);
+    next.maxDiscoveryPagesPerChannel = normalizeInteger(next.maxDiscoveryPagesPerChannel, 10, 1, 100);
+    next.shortCacheTtlDays = normalizeInteger(next.shortCacheTtlDays, 30, 1, 365);
     if (
         next.minimumDurationSeconds != null
         && next.maximumDurationSeconds != null
@@ -202,6 +313,14 @@ export function saveSettings(settings: Partial<AppSettings>): AppSettings {
         upsert.run("maximum_duration_seconds", next.maximumDurationSeconds == null
             ? ""
             : String(next.maximumDurationSeconds));
+        upsert.run("automatic_sync_enabled", String(next.automaticSyncEnabled));
+        upsert.run("sync_interval_minutes", String(next.syncIntervalMinutes));
+        upsert.run("youtube_daily_quota_units", String(next.youtubeDailyQuotaUnits));
+        upsert.run("youtube_daily_write_budget_units", String(next.youtubeDailyWriteBudgetUnits));
+        upsert.run("max_playlist_adds_per_sync", String(next.maxPlaylistAddsPerSync));
+        upsert.run("max_playlist_removals_per_sync", String(next.maxPlaylistRemovalsPerSync));
+        upsert.run("max_discovery_pages_per_channel", String(next.maxDiscoveryPagesPerChannel));
+        upsert.run("short_cache_ttl_days", String(next.shortCacheTtlDays));
     })();
 
     return next;

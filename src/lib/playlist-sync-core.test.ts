@@ -10,6 +10,7 @@ import type {
     YouTubePlaylistEntry,
 } from "./youtube-integration-repository";
 import type { YouTubeSyncStatus } from "@/types/youtube-integration";
+import { DEFAULT_SETTINGS, type AppSettings } from "../types/settings";
 
 const connectedIntegration: YouTubeIntegrationRecord = {
     youtubeChannelId: "mine",
@@ -48,19 +49,13 @@ class MemoryStore implements PlaylistSyncStore {
         removed: number;
         error: string | null;
     }> = [];
+    settings: AppSettings = { ...DEFAULT_SETTINGS };
 
     getIntegration() { return this.integration; }
     listChannels() { return [{ channelId: "channel", name: "Channel", isMusicOnly: true }]; }
     listWatched() { return Array.from(this.watched); }
     markWatched(id: string) { this.watched.add(id); }
-    getSettings() {
-        return {
-            videoLookbackDays: 30,
-            excludedTitleTerms: [],
-            minimumDurationSeconds: null,
-            maximumDurationSeconds: null,
-        };
-    }
+    getSettings() { return this.settings; }
     listEntries() { return Array.from(this.entries.values()).map((entry) => ({ ...entry })); }
     startSync(startedAt: number) {
         if (this.integration) {
@@ -153,6 +148,7 @@ class FakeYouTubeGateway implements YouTubeGateway {
     listBarrier: Promise<void> | null = null;
     playlistExists = true;
     ignoredVideoIds = new Set<string>();
+    beforeInsert: ((videoId: string) => void) | null = null;
 
     async getMyAccount() { return { channelId: "mine", title: "Me" }; }
     async getPlaylist() {
@@ -166,6 +162,7 @@ class FakeYouTubeGateway implements YouTubeGateway {
         return this.remoteItems.map((item) => ({ ...item }));
     }
     async insertPlaylistItem(_accessToken: string, _playlistId: string, videoId: string) {
+        this.beforeInsert?.(videoId);
         this.insertOrder.push(videoId);
         const id = `item-${videoId}`;
         this.remoteItems.push({ id, videoId });
@@ -216,6 +213,39 @@ describe("playlist synchronization", () => {
         expect(store.finished.at(-1)).toMatchObject({ status: "success", added: 2 });
     });
 
+    it("rechecks watched state before every insertion", async () => {
+        const store = new MemoryStore();
+        const youtube = new FakeYouTubeGateway();
+        youtube.discovered = [
+            video("first", "2026-08-01T00:00:00Z"),
+            video("became-watched", "2026-08-02T00:00:00Z"),
+        ];
+        youtube.beforeInsert = (videoId) => {
+            if (videoId === "first") store.watched.add("became-watched");
+        };
+
+        await runner(store, youtube)();
+
+        expect(youtube.insertOrder).toEqual(["first"]);
+        expect(store.entries.has("became-watched")).toBe(false);
+    });
+
+    it("limits additions without losing remaining discoveries", async () => {
+        const store = new MemoryStore();
+        const youtube = new FakeYouTubeGateway();
+        store.settings.maxPlaylistAddsPerSync = 2;
+        youtube.discovered = [
+            video("one", "2026-08-01T00:00:00Z"),
+            video("two", "2026-08-02T00:00:00Z"),
+            video("three", "2026-08-03T00:00:00Z"),
+        ];
+
+        await runner(store, youtube)();
+
+        expect(youtube.insertOrder).toEqual(["one", "two"]);
+        expect(store.entries.has("three")).toBe(false);
+    });
+
     it("does not duplicate or take ownership of a manually added item", async () => {
         const store = new MemoryStore();
         const youtube = new FakeYouTubeGateway();
@@ -230,6 +260,11 @@ describe("playlist synchronization", () => {
             managedByApp: false,
             state: "active",
         });
+
+        youtube.remoteItems = [];
+        await runner(store, youtube)();
+        expect(store.watched.has("release")).toBe(false);
+        expect(youtube.insertOrder).toEqual([]);
     });
 
     it("marks a managed item watched when it was removed in YouTube", async () => {
@@ -372,6 +407,7 @@ describe("playlist synchronization", () => {
             removalReason: null,
             lastError: null,
         });
+        youtube.discovered = [video("prepared", "2026-08-01T00:00:00Z")];
 
         await runner(store, youtube)();
 
@@ -380,6 +416,31 @@ describe("playlist synchronization", () => {
             state: "active",
             playlistItemId: "existing-item",
             managedByApp: true,
+        });
+    });
+
+    it("never inserts a prepared entry that became watched", async () => {
+        const store = new MemoryStore();
+        const youtube = new FakeYouTubeGateway();
+        store.watched.add("prepared-watched");
+        store.entries.set("prepared-watched", {
+            videoId: "prepared-watched",
+            sourceChannelId: "channel",
+            publishedAt: "2026-08-01T00:00:00Z",
+            playlistItemId: null,
+            state: "adding",
+            managedByApp: true,
+            removalReason: null,
+            lastError: null,
+        });
+        youtube.discovered = [video("prepared-watched", "2026-08-01T00:00:00Z")];
+
+        await runner(store, youtube)();
+
+        expect(youtube.insertOrder).toEqual([]);
+        expect(store.entries.get("prepared-watched")).toMatchObject({
+            state: "removed",
+            removalReason: "watched",
         });
     });
 

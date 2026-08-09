@@ -2,21 +2,21 @@ import "server-only";
 
 import { getDb } from "./db";
 import { detectYouTubeShort } from "./youtube-content-filter";
-
-const CACHE_TTL_SECONDS = 30 * 24 * 60 * 60;
+import { getSettings } from "./repository";
 
 interface ShortCacheRow {
     is_short: number;
 }
 
 export async function isYouTubeShortCached(videoId: string): Promise<boolean> {
+    const cacheTtlSeconds = getSettings().shortCacheTtlDays * 24 * 60 * 60;
     const cached = getDb()
         .prepare<[string, number], ShortCacheRow>(
             `SELECT is_short
              FROM youtube_short_cache
              WHERE video_id = ? AND checked_at >= unixepoch() - ?`
         )
-        .get(videoId, CACHE_TTL_SECONDS);
+        .get(videoId, cacheTtlSeconds);
     if (cached) return cached.is_short === 1;
 
     const detected = await detectYouTubeShort(videoId);

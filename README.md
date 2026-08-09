@@ -8,13 +8,13 @@ A minimalist dashboard that tracks music releases from selected YouTube channels
 
 ## Features
 
-- **Automatic YouTube playlist:** Adds unwatched releases to a private `Fresh Music — Nouveautés` playlist every hour.
+- **Automatic YouTube playlist:** Adds unwatched releases to a private `Fresh Music — Nouveautés` playlist at a configurable interval (hourly by default).
 - **YouTube and YouTube Music:** The playlist is available in both apps. YouTube Music only surfaces videos it recognizes as music.
 - **Two-way queue state:** Marking a video watched in Fresh Music removes it from the playlist. Removing a managed item in YouTube marks it watched at the next sync.
 - **New Releases:** Fetches recent uploads from curated channels and excludes YouTube Shorts plus current, upcoming, and completed live broadcasts.
 - **Configurable filters:** Optionally ignore case-insensitive title fragments and videos outside a minimum/maximum duration.
 - **Configurable Lookback:** Choose a discovery window from 7 days to 1 year.
-- **Server-side Persistence:** Channels, watched videos, integration state, and settings are stored in SQLite. `localStorage` remains an offline UI cache.
+- **Local catalogue:** Discovery metadata, history, integration state, quota diagnostics, and settings are stored in SQLite. Dashboard tabs never query YouTube directly.
 - **Clean Player:** Watch videos in the dashboard with previous/next navigation.
 
 YouTube does not expose a user's watch history through its official API. Playing a track in YouTube or YouTube Music does not remove it automatically: remove it from the playlist or mark it watched in Fresh Music.
@@ -50,9 +50,10 @@ Fresh Music requests only `https://www.googleapis.com/auth/youtube.force-ssl`. O
 | `GOOGLE_CLIENT_SECRET` | For playlist sync | OAuth web client secret. |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | For playlist sync | Stable, base64-encoded 32-byte key. |
 | `APP_BASE_URL` | For playlist sync | Public origin without a trailing slash, such as `https://music.example.com`. |
-| `PLAYLIST_SYNC_INTERVAL_MINUTES` | No | Sync interval, clamped to 5–1440 minutes; defaults to `60`. |
 | `DB_PATH` | No | SQLite path; defaults to `./data/freshmusic.db` and `/app/data/freshmusic.db` in Docker. |
-| `NEXT_PUBLIC_YOUTUBE_API_KEY` | Development/build only | Optional client-bundle API key retained for the existing dashboard. |
+
+Synchronization interval, quota budgets, per-run limits, discovery pagination and the Shorts cache duration are configured from **Manage & Backup → Synchronization settings** and persisted in SQLite.
+The deprecated `PLAYLIST_SYNC_INTERVAL_MINUTES` variable is read only once when migrating an older database; use the interface afterwards.
 
 ## Docker
 
@@ -83,7 +84,6 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY}
       APP_BASE_URL: ${APP_BASE_URL}
-      PLAYLIST_SYNC_INTERVAL_MINUTES: 60
     volumes:
       - fresh-music-data:/app/data
 
@@ -96,13 +96,11 @@ volumes:
 Create `.env.local`:
 
 ```env
-NEXT_PUBLIC_YOUTUBE_API_KEY=your_api_key
 YOUTUBE_API_KEY=your_api_key
 GOOGLE_CLIENT_ID=your_oauth_client_id
 GOOGLE_CLIENT_SECRET=your_oauth_client_secret
 GOOGLE_TOKEN_ENCRYPTION_KEY=your_stable_base64_key
 APP_BASE_URL=http://localhost:3000
-PLAYLIST_SYNC_INTERVAL_MINUTES=60
 ```
 
 Register `http://localhost:3000/api/youtube/auth/callback` as a development redirect URI, then run:

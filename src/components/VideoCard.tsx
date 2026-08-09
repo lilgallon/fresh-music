@@ -1,5 +1,5 @@
 import { YouTubeVideo } from "@/types/youtube";
-import { CheckCircle, Play } from "lucide-react";
+import { CheckCircle, Play, VideoOff } from "lucide-react";
 import Image from "next/image";
 
 interface VideoCardProps {
@@ -12,20 +12,26 @@ interface VideoCardProps {
 export default function VideoCard({ video, isWatched, onToggleWatched, onClick }: VideoCardProps) {
     return (
         <div
-            className="group relative flex cursor-pointer flex-col space-y-3 rounded-xl border border-border bg-card p-3 transition-colors hover:border-zinc-700 hover:bg-zinc-900/50"
-            onClick={() => onClick(video)}
+            className={`group relative flex flex-col space-y-3 rounded-xl border border-border bg-card p-3 transition-colors hover:border-zinc-700 hover:bg-zinc-900/50 ${video.unavailable ? "cursor-default" : "cursor-pointer"}`}
+            onClick={() => !video.unavailable && onClick(video)}
         >
             <div className="relative aspect-video overflow-hidden rounded-lg bg-zinc-800">
-                <Image
-                    src={video.thumbnail}
-                    alt={video.title}
-                    fill
-                    className="object-cover transition-transform group-hover:scale-105 will-change-transform"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Play className="h-10 w-10 text-white fill-white" />
-                </div>
+                {video.thumbnail ? (
+                    <Image
+                        src={video.thumbnail}
+                        alt={video.title}
+                        fill
+                        className="object-cover transition-transform group-hover:scale-105 will-change-transform"
+                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    />
+                ) : (
+                    <div className="flex h-full items-center justify-center text-zinc-600"><VideoOff className="h-9 w-9" /></div>
+                )}
+                {!video.unavailable && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Play className="h-10 w-10 text-white fill-white" />
+                    </div>
+                )}
             </div>
 
             <div className="flex flex-1 flex-col justify-between space-y-2">

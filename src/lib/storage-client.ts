@@ -1,23 +1,14 @@
 import { YouTubeChannel } from "@/types/youtube";
+import { YouTubeVideo } from "@/types/youtube";
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
+import { AppSettings, DEFAULT_SETTINGS } from "@/types/settings";
+
+export type { AppSettings } from "@/types/settings";
+export { DEFAULT_SETTINGS } from "@/types/settings";
 
 const LS_CHANNELS = "followedChannels";
 const LS_WATCHED = "watchedVideoIds";
 const LS_SETTINGS = "freshMusicSettings";
-
-export interface AppSettings {
-    videoLookbackDays: number;
-    excludedTitleTerms: string[];
-    minimumDurationSeconds: number | null;
-    maximumDurationSeconds: number | null;
-}
-
-export const DEFAULT_SETTINGS: AppSettings = {
-    videoLookbackDays: 30,
-    excludedTitleTerms: [],
-    minimumDurationSeconds: null,
-    maximumDurationSeconds: null,
-};
 
 function readLS<T>(key: string): T | null {
     if (typeof window === "undefined") return null;
@@ -85,6 +76,49 @@ export async function fetchSettings(): Promise<AppSettings> {
     return res.json();
 }
 
+export async function bootstrapApplicationCache(params: {
+    channels: YouTubeChannel[] | null;
+    watchedIds: string[] | null;
+    settings: AppSettings | null;
+}): Promise<{ channels: YouTubeChannel[]; watchedIds: string[]; settings: AppSettings }> {
+    const res = await fetch("/api/bootstrap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+    });
+    if (!res.ok) throw new Error(`POST /api/bootstrap failed: ${res.status}`);
+    return res.json();
+}
+
+export async function fetchCatalogVideos(
+    tab: "new" | "history",
+    cursor: string | null = null,
+    limit = 50
+): Promise<{ videos: YouTubeVideo[]; nextCursor: string | null }> {
+    const cursorParam = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+    const res = await fetch(`/api/videos?tab=${tab}&limit=${limit}${cursorParam}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`GET /api/videos failed: ${res.status}`);
+    return res.json();
+}
+
+export interface SearchResultChannel {
+    id: string;
+    title: string;
+    description: string;
+    thumbnail: string;
+}
+
+export async function searchChannels(query: string): Promise<SearchResultChannel[]> {
+    const res = await fetch(`/api/youtube/channels/search?q=${encodeURIComponent(query)}`, {
+        cache: "no-store",
+    });
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Channel search failed: ${res.status}`);
+    }
+    return res.json();
+}
+
 export async function putChannels(channels: YouTubeChannel[]): Promise<YouTubeChannel[]> {
     const res = await fetch("/api/channels", {
         method: "PUT",
@@ -111,7 +145,10 @@ export async function putSettings(settings: AppSettings): Promise<AppSettings> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
     });
-    if (!res.ok) throw new Error(`PUT /api/settings failed: ${res.status}`);
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `PUT /api/settings failed: ${res.status}`);
+    }
     return res.json();
 }
 
@@ -156,7 +193,7 @@ export async function syncYouTubePlaylist(): Promise<YouTubeIntegrationPublicSta
     const res = await fetch("/api/youtube/sync", { method: "POST" });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || `POST /api/youtube/sync failed: ${res.status}`);
-    return body.status;
+    return fetchYouTubeIntegration();
 }
 
 export async function recreateYouTubePlaylist(): Promise<YouTubeIntegrationPublicStatus> {

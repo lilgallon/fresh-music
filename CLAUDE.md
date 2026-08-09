@@ -8,9 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` — production build (uses `output: 'standalone'` for the Docker runtime)
 - `npm run start` — run the production build locally
 - `npm run lint` — ESLint via `next lint` (extends `next/core-web-vitals` + `next/typescript`); CI runs this and fails on errors
+- `npm test` — run the Vitest unit suite
 - `npm ci --legacy-peer-deps` — install deps the same way CI/Docker does (the `--legacy-peer-deps` flag is required)
 
-There is no test suite. CI (`.github/workflows/ci.yml`) only runs `lint` + `build`. The Docker image is published to `ghcr.io/lilgallon/fresh-music` only on `v*` tag pushes (`docker-publish.yml`).
+CI (`.github/workflows/ci.yml`) runs `lint`, `test`, and `build`. The Docker image is published to `ghcr.io/lilgallon/fresh-music` only on `v*` tag pushes (`docker-publish.yml`).
 
 ## Architecture
 
@@ -19,7 +20,7 @@ This is a single-page Next.js 14 (App Router) app. The UI lives mostly in one cl
 - `followedChannels` — the user's subscriptions
 - `watchedIds` — array of YouTube video IDs marked as watched
 - `settings` — user preferences such as the video lookback window
-- `videos` — derived from `fetchAllVideos(followedChannels, settings.videoLookbackDays)` whenever the channel list or lookback setting changes
+- `videos` — paged from the local SQLite catalogue through `GET /api/videos`; the browser never calls YouTube directly
 
 The "New" vs "History" tabs are just a filter over `videos` based on `watchedIds`. There is no router-level navigation.
 
@@ -27,7 +28,7 @@ The "New" vs "History" tabs are just a filter over `videos` based on `watchedIds
 
 ### Persistence — server SQLite + localStorage cache
 
-The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persists `channels`, `watched_videos`, and `app_settings`. `localStorage` is kept as an offline cache for instant first-paint and resilience when the API is unreachable.
+The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persists channels, watched videos, settings, the local video catalogue, playlist entries, daily quota counters, and the latest 30 synchronization runs. `localStorage` is kept only as a bootstrap/offline cache for channels, watched IDs, and settings.
 
 - Singleton DB connection: `src/lib/db.ts` (path from `DB_PATH` env, defaults to `./data/freshmusic.db`).
 - Repository (prepared statements): `src/lib/repository.ts`.
@@ -36,23 +37,22 @@ The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persis
   - `GET/PUT /api/channels`, `POST/DELETE /api/channels/[channelId]`
   - `GET/PUT /api/watched`, `POST/DELETE /api/watched/[videoId]`
   - `GET/PUT /api/settings`
+  - `POST /api/bootstrap`, `GET /api/videos`
+  - `GET /api/youtube/channels/search`, `GET /api/youtube/connection`, `POST /api/youtube/sync`
 
-**Hydration flow** in `Dashboard.tsx`: read localStorage immediately → fetch server → if server is empty, seed channels (from cached LS, else from `src/config/channels.ts` defaults) → reconcile state. Mutations are optimistic with rollback on API failure. Don't bypass the wrapper — direct `localStorage.setItem` calls would desync the cache from the server.
+**Hydration flow** in `Dashboard.tsx`: read localStorage immediately → atomically call `/api/bootstrap` → seed empty server tables from the cache/default channels → mark initialization complete → allow background discovery/synchronization. No YouTube write is allowed before this flag. Mutations are optimistic with rollback on API failure. Don't bypass the wrapper — direct `localStorage.setItem` calls would desync the cache from the server.
 
 **Important when adding a route that touches the DB**: import from `@/lib/repository`, never instantiate `better-sqlite3` directly. The DB connection is a process-wide singleton.
 
 ### Settings
 
-The video lookback window is stored as `videoLookbackDays` (default `30`, clamped to `1..365`) in `app_settings` under the repository key `video_lookback_days`. Optional content filters are stored under `excluded_title_terms`, `minimum_duration_seconds`, and `maximum_duration_seconds`. They are exposed through `GET/PUT /api/settings`, included in backup import/export, and cached in localStorage by `src/lib/storage-client.ts`. The settings modal (`src/components/ChannelSettings.tsx`) offers preset windows from 7 days to 1 year plus case-insensitive title fragments and duration bounds in seconds.
+Functional settings live in `app_settings` and are exposed through validated `GET/PUT /api/settings`: lookback and content filters, automatic scheduling, interval, quota/write budgets, per-sync add/remove limits, discovery pagination, and Shorts TTL. Changes are effective without a restart and reschedule the timer when necessary. Secrets and infrastructure remain environment-only.
 
-### YouTube API key — dual source (important)
+### YouTube API and synchronization
 
-`src/lib/youtube.ts:getApiKey()` resolves the key from one of two places, in order:
+`YOUTUBE_API_KEY` is server-only. Never reintroduce `NEXT_PUBLIC_YOUTUBE_API_KEY` or expose it through a config endpoint. Channel search and catalogue discovery are internal server routes; tab changes and pagination read only SQLite.
 
-1. **Build-time** `NEXT_PUBLIC_YOUTUBE_API_KEY` — baked into the client bundle. Used in dev (`.env.local`) and CI builds.
-2. **Runtime** `YOUTUBE_API_KEY` (or `NEXT_PUBLIC_*`) — fetched lazily from `GET /api/config` (`src/app/api/config/route.ts`, `force-dynamic`). This is how the Docker image ships without a baked-in key: users pass `-e YOUTUBE_API_KEY=…` and the client reads it at runtime.
-
-When changing how the key is sourced, update **both** the `NEXT_PUBLIC_` build-time path (Dockerfile `ARG`) and the runtime `/api/config` path, and check `Dockerfile` + `docker-publish.yml` accordingly.
+`src/lib/youtube-sync-manager.ts` owns the process-wide synchronization lock and execution phases. `src/lib/youtube-catalog-discovery.ts` incrementally reads upload playlists, batches metadata by 50, and persists it before playlist reconciliation. `src/lib/youtube-quota.ts` counts estimated read/search/write units per Pacific quota day and atomically reserves 50 units before every mutation. Google Cloud remains authoritative for actual project consumption.
 
 ### Native module note
 
@@ -60,11 +60,11 @@ When changing how the key is sourced, update **both** the `NEXT_PUBLIC_` build-t
 
 ### YouTube fetch quirk
 
-`fetchLatestVideos` first tries the cheap trick of converting a channel ID `UC…` into its uploads playlist ID `UU…`. If that 404s it falls back to a real `channels?part=contentDetails` lookup. Errors are swallowed and return `[]` to keep the UI stable — don't refactor this to throw.
+Discovery first tries the cheap conversion from channel ID `UC…` to uploads playlist ID `UU…`, then persists the real uploads ID if a `channels.list` fallback is required. It stops at the last known upload, the configured lookback cutoff, or the page limit. Do not advance the last-known marker until metadata persistence succeeds.
 
-The YouTube Data API does not expose a reliable `isShort`/`type=short` flag. After date filtering, Fresh Music gets duration and live metadata from `videos.list`; current, upcoming, and completed broadcasts are excluded. Videos up to three minutes are checked with a server-side `HEAD /shorts/{videoId}` request: true Shorts stay on that route while regular videos redirect to `/watch`. The check uses no Data API quota, is limited to five concurrent requests, and is cached for 30 days in `youtube_short_cache`. It is best-effort and fail-open so a YouTube page failure does not hide a music release. User title/duration rules are applied before the Shorts check. The same rules are used by the dashboard and OAuth playlist sync; managed items that match are removed with the local reason `filtered` and can be rediscovered if configurable rules are later relaxed.
+The YouTube Data API does not expose a reliable `isShort`/`type=short` flag. Fresh Music gets duration/live metadata from batched `videos.list` calls. Videos up to three minutes are checked with a server-side `HEAD /shorts/{videoId}` request; this uses no Data API quota, is cached with the configurable TTL, and fails open. Existing metadata is refreshed only when stale. The dashboard and playlist use the same eligibility calculation from SQLite.
 
-The lookback setting is applied by fetching up to 50 recent uploads per channel and filtering by `publishedAt >= now - videoLookbackDays`. If a channel publishes more than 50 videos inside the selected window, older videos in that window may not be present without adding pagination.
+Playlist reconciliation reads the remote playlist once, prioritizes pending/watched removals, then computes eligible unwatched local videos minus remote/managed entries and adds only the missing subset, oldest first. Never insert an `adding` entry without rechecking watched state and the per-run limit.
 
 ### Styling
 

@@ -16,12 +16,16 @@ import {
     revokeYouTubeAuthorization,
 } from "./youtube-oauth";
 import { FRESH_MUSIC_PLAYLIST_TITLE, youtubeGateway } from "./youtube-api-server";
-import { synchronizeYouTubePlaylist } from "./playlist-sync";
+import { requestYouTubeSync } from "./youtube-sync-manager";
 import {
     findExistingFreshMusicPlaylist,
     resolveFreshMusicPlaylist,
 } from "./youtube-playlist-resolution";
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
+import { getLastCatalogDiscoveryAt, isApplicationInitialized } from "./catalog-repository";
+import { getLastSuccessfulSyncAt, getLatestSyncRun } from "./sync-run-repository";
+import { getYouTubeQuotaStatus } from "./youtube-quota";
+import { getSettings } from "./repository";
 
 function toIso(timestamp: number | null): string | null {
     return timestamp == null ? null : new Date(timestamp).toISOString();
@@ -38,6 +42,15 @@ export function getYouTubeIntegrationPublicStatus(): YouTubeIntegrationPublicSta
         }
         : null;
 
+    const latestRun = getLatestSyncRun();
+    const quota = getYouTubeQuotaStatus();
+    const settings = getSettings();
+    const intervalNextAt = latestRun?.completedAt
+        ? latestRun.completedAt + settings.syncIntervalMinutes * 60 * 1000
+        : null;
+    const nextScheduledAt = settings.automaticSyncEnabled
+        ? Math.max(intervalNextAt ?? Date.now(), quota.pausedUntil ? new Date(quota.pausedUntil).getTime() : 0)
+        : null;
     return {
         configured: isYouTubeOAuthConfigured(),
         connected: Boolean(integration?.encryptedRefreshToken),
@@ -49,11 +62,24 @@ export function getYouTubeIntegrationPublicStatus(): YouTubeIntegrationPublicSta
             status: integration?.lastSyncStatus ?? "idle",
             lastStartedAt: toIso(integration?.lastSyncStartedAt ?? null),
             lastCompletedAt: toIso(integration?.lastSyncCompletedAt ?? null),
-            nextSyncAt: toIso(integration?.nextSyncAt ?? null),
+            nextSyncAt: toIso(nextScheduledAt ?? integration?.nextSyncAt ?? null),
             added: integration?.lastSyncAdded ?? 0,
             removed: integration?.lastSyncRemoved ?? 0,
             error: integration?.lastSyncError ?? null,
+            lastSuccessfulAt: toIso(getLastSuccessfulSyncAt()),
         },
+        catalog: {
+            initialized: isApplicationInitialized(),
+            lastDiscoveryAt: toIso(getLastCatalogDiscoveryAt() == null
+                ? null
+                : (getLastCatalogDiscoveryAt() as number) * 1000),
+        },
+        quota,
+        progress: latestRun ? {
+            ...latestRun,
+            startedAt: new Date(latestRun.startedAt).toISOString(),
+            completedAt: toIso(latestRun.completedAt),
+        } : null,
     };
 }
 
@@ -69,6 +95,7 @@ export async function connectYouTubeAccount(refreshToken: string): Promise<void>
     }
 
     saveYouTubeConnection(account.channelId, account.title, encryptRefreshToken(refreshToken));
+    if (!isApplicationInitialized()) return;
     const current = getYouTubeIntegration();
 
     const resolution = await resolveFreshMusicPlaylist(
@@ -80,11 +107,7 @@ export async function connectYouTubeAccount(refreshToken: string): Promise<void>
     saveYouTubePlaylist(resolution.playlist.id, resolution.playlist.title);
     if (resolution.source !== "preferred") resetYouTubePlaylistEntries();
 
-    try {
-        await synchronizeYouTubePlaylist();
-    } catch (error) {
-        console.error("YouTube account connected, but the initial playlist sync failed:", error);
-    }
+    requestYouTubeSync("oauth", false);
 }
 
 export async function recreateYouTubePlaylist(): Promise<void> {
@@ -100,7 +123,7 @@ export async function recreateYouTubePlaylist(): Promise<void> {
     );
     saveYouTubePlaylist(resolution.playlist.id, resolution.playlist.title);
     if (resolution.source !== "preferred") resetYouTubePlaylistEntries();
-    await synchronizeYouTubePlaylist();
+    requestYouTubeSync("manual", true);
 }
 
 export async function recoverExistingYouTubePlaylist(): Promise<boolean> {
@@ -118,7 +141,7 @@ export async function recoverExistingYouTubePlaylist(): Promise<boolean> {
 
     saveYouTubePlaylist(resolution.playlist.id, resolution.playlist.title);
     if (resolution.source !== "preferred") resetYouTubePlaylistEntries();
-    await synchronizeYouTubePlaylist();
+    requestYouTubeSync("scheduled", false);
     return true;
 }
 

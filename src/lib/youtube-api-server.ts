@@ -1,13 +1,19 @@
 import "server-only";
 
 import { YouTubeChannel, YouTubeVideo } from "@/types/youtube";
+import type { YouTubeContentFilterRules } from "./youtube-content-filter";
 import {
-    findIgnoredYouTubeVideoIds,
-    parseIsoDurationSeconds,
-    YouTubeContentFilterRules,
-    YouTubeVideoMetadata,
-} from "./youtube-content-filter";
-import { isYouTubeShortCached } from "./youtube-short-cache";
+    isApplicationInitialized,
+    listEligibleUnwatchedCatalogVideos,
+    listIneligibleCatalogVideoIds,
+} from "./catalog-repository";
+import {
+    canUseYouTubeRead,
+    pauseYouTubeQuota,
+    recordYouTubeRead,
+    reserveYouTubeWrite,
+} from "./youtube-quota";
+import { getSettings } from "./repository";
 
 const BASE_URL = "https://www.googleapis.com/youtube/v3";
 export const FRESH_MUSIC_PLAYLIST_TITLE = "Fresh Music — Nouveautés";
@@ -23,6 +29,13 @@ export class YouTubeApiError extends Error {
     }
 }
 
+export class YouTubeWriteBudgetError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "YouTubeWriteBudgetError";
+    }
+}
+
 interface YouTubeErrorResponse {
     error?: {
         message?: string;
@@ -35,6 +48,19 @@ async function authorizedRequest<T>(
     path: string,
     init?: RequestInit
 ): Promise<T> {
+    const method = init?.method?.toUpperCase() ?? "GET";
+    if (method === "GET") {
+        if (!canUseYouTubeRead()) {
+            throw new Error("The configured YouTube quota is exhausted or paused.");
+        }
+        recordYouTubeRead(1);
+    } else {
+        if (!isApplicationInitialized()) {
+            throw new Error("Fresh Music must finish its local bootstrap before writing to YouTube.");
+        }
+        const reservation = reserveYouTubeWrite(50);
+        if (!reservation.allowed) throw new YouTubeWriteBudgetError(reservation.reason ?? "YouTube write budget exhausted");
+    }
     const response = await fetch(`${BASE_URL}${path}`, {
         ...init,
         headers: {
@@ -52,10 +78,12 @@ async function authorizedRequest<T>(
         } catch {
             // Keep the HTTP status as the diagnostic when Google returned no JSON body.
         }
+        const reason = data.error?.errors?.[0]?.reason ?? null;
+        if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") pauseYouTubeQuota();
         throw new YouTubeApiError(
             data.error?.message || `YouTube API request failed with ${response.status}`,
             response.status,
-            data.error?.errors?.[0]?.reason ?? null
+            reason
         );
     }
 
@@ -136,118 +164,6 @@ interface PlaylistItemsResponse {
         };
         contentDetails?: { videoId?: string; videoPublishedAt?: string };
     }>;
-}
-
-interface VideosResponse {
-    items?: Array<{
-        id: string;
-        contentDetails?: { duration?: string };
-        snippet?: {
-            title?: string;
-            liveBroadcastContent?: "live" | "upcoming" | "none";
-        };
-        liveStreamingDetails?: object;
-    }>;
-}
-
-async function findIgnoredVideoIds(
-    accessToken: string,
-    videoIds: string[],
-    rules?: YouTubeContentFilterRules
-): Promise<Set<string>> {
-    if (videoIds.length === 0) return new Set();
-
-    try {
-        const uniqueIds = Array.from(new Set(videoIds));
-        const metadata: YouTubeVideoMetadata[] = [];
-        for (let offset = 0; offset < uniqueIds.length; offset += 50) {
-            const chunk = uniqueIds.slice(offset, offset + 50);
-            const data = await authorizedRequest<VideosResponse>(
-                accessToken,
-                `/videos?part=contentDetails,snippet,liveStreamingDetails&id=${encodeURIComponent(chunk.join(","))}`
-            );
-            metadata.push(...(data.items ?? []).map((item) => ({
-                id: item.id,
-                title: item.snippet?.title ?? "",
-                durationSeconds: item.contentDetails?.duration
-                    ? parseIsoDurationSeconds(item.contentDetails.duration)
-                    : null,
-                liveBroadcastContent: item.snippet?.liveBroadcastContent ?? null,
-                hasLiveStreamingDetails: item.liveStreamingDetails != null,
-            })));
-        }
-        return findIgnoredYouTubeVideoIds(metadata, rules, isYouTubeShortCached);
-    } catch (error) {
-        console.warn("Could not identify Shorts or live videos; keeping the discovered list:", error);
-        return new Set();
-    }
-}
-
-async function filterIgnoredContent(
-    accessToken: string,
-    videos: DiscoveredYouTubeVideo[],
-    rules?: YouTubeContentFilterRules
-): Promise<DiscoveredYouTubeVideo[]> {
-    const ignored = await findIgnoredVideoIds(accessToken, videos.map((video) => video.id), rules);
-    return videos.filter((video) => !ignored.has(video.id));
-}
-
-async function getUploadsPlaylistId(accessToken: string, channelId: string): Promise<string | null> {
-    const guessedId = channelId.startsWith("UC") ? `UU${channelId.slice(2)}` : channelId;
-    try {
-        await authorizedRequest<PlaylistItemsResponse>(
-            accessToken,
-            `/playlistItems?part=id&playlistId=${encodeURIComponent(guessedId)}&maxResults=1`
-        );
-        return guessedId;
-    } catch {
-        try {
-            const data = await authorizedRequest<ChannelsResponse>(
-                accessToken,
-                `/channels?part=contentDetails&id=${encodeURIComponent(channelId)}`
-            );
-            return data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads ?? null;
-        } catch {
-            return null;
-        }
-    }
-}
-
-async function discoverChannelVideos(
-    accessToken: string,
-    channelId: string,
-    lookbackDays: number,
-    rules?: YouTubeContentFilterRules
-): Promise<DiscoveredYouTubeVideo[]> {
-    const playlistId = await getUploadsPlaylistId(accessToken, channelId);
-    if (!playlistId) return [];
-
-    try {
-        const data = await authorizedRequest<PlaylistItemsResponse>(
-            accessToken,
-            `/playlistItems?part=snippet,contentDetails&playlistId=${encodeURIComponent(playlistId)}&maxResults=50`
-        );
-        const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
-        const videos = (data.items ?? []).flatMap((item): DiscoveredYouTubeVideo[] => {
-            const videoId = item.contentDetails?.videoId ?? item.snippet?.resourceId?.videoId;
-            const publishedAt = item.contentDetails?.videoPublishedAt ?? item.snippet?.publishedAt;
-            if (!videoId || !publishedAt || new Date(publishedAt).getTime() < cutoff) return [];
-            return [{
-                id: videoId,
-                title: item.snippet?.title ?? "Untitled video",
-                thumbnail: item.snippet?.thumbnails?.high?.url
-                    ?? item.snippet?.thumbnails?.default?.url
-                    ?? "",
-                channelTitle: item.snippet?.channelTitle ?? "",
-                publishedAt,
-                sourceChannelId: channelId,
-            }];
-        });
-        return filterIgnoredContent(accessToken, videos, rules);
-    } catch (error) {
-        console.warn(`Could not discover videos for channel ${channelId}:`, error);
-        return [];
-    }
 }
 
 export const youtubeGateway: YouTubeGateway = {
@@ -365,21 +281,19 @@ export const youtubeGateway: YouTubeGateway = {
         );
     },
 
-    findIgnoredVideoIds,
+    async findIgnoredVideoIds(_accessToken, videoIds, rules) {
+        return listIneligibleCatalogVideoIds(videoIds, {
+            ...getSettings(),
+            excludedTitleTerms: rules?.excludedTitleTerms ?? [],
+            minimumDurationSeconds: rules?.minimumDurationSeconds ?? null,
+            maximumDurationSeconds: rules?.maximumDurationSeconds ?? null,
+        });
+    },
 
-    async discoverVideos(accessToken, channels, lookbackDays, rules) {
-        const channelVideos = await Promise.all(
-            channels.map((channel) => discoverChannelVideos(
-                accessToken,
-                channel.channelId,
-                lookbackDays,
-                rules
-            ))
-        );
-        const byId = new Map<string, DiscoveredYouTubeVideo>();
-        for (const video of channelVideos.flat()) byId.set(video.id, video);
-        return Array.from(byId.values()).sort(
-            (left, right) => new Date(left.publishedAt).getTime() - new Date(right.publishedAt).getTime()
-        );
+    async discoverVideos() {
+        return listEligibleUnwatchedCatalogVideos(getSettings()).map((video) => ({
+            ...video,
+            sourceChannelId: video.channelId ?? "",
+        }));
     },
 };

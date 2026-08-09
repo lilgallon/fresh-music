@@ -2,8 +2,6 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { YouTubeVideo, YouTubeChannel } from "@/types/youtube";
-import { channels as defaultChannels } from "@/config/channels";
-import { fetchAllVideos, fetchChannelsInfo } from "@/lib/youtube";
 import {
     readChannelsCache,
     readWatchedCache,
@@ -11,9 +9,9 @@ import {
     writeChannelsCache,
     writeWatchedCache,
     writeSettingsCache,
-    fetchChannels,
     fetchWatched,
-    fetchSettings,
+    bootstrapApplicationCache,
+    fetchCatalogVideos,
     putChannels,
     putWatched,
     putSettings,
@@ -35,6 +33,7 @@ export default function Dashboard() {
     const [watchedIds, setWatchedIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
+    const [nextVideoCursor, setNextVideoCursor] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<"new" | "history">("new");
     const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
     const [showSettings, setShowSettings] = useState(false);
@@ -59,32 +58,17 @@ export default function Dashboard() {
 
         (async () => {
             try {
-                const [serverChannels, serverWatched, serverSettings] = await Promise.all([
-                    fetchChannels(),
-                    fetchWatched(),
-                    fetchSettings(),
-                ]);
-
-                let finalChannels = serverChannels;
-                let finalWatched = serverWatched;
-
-                // Server is empty: seed it (from cached LS or from default config)
-                if (serverChannels.length === 0) {
-                    const seed = cachedChannels && cachedChannels.length > 0
-                        ? cachedChannels
-                        : defaultChannels;
-                    finalChannels = await putChannels(seed);
-                }
-                if (serverWatched.length === 0 && cachedWatched && cachedWatched.length > 0) {
-                    finalWatched = await putWatched(cachedWatched);
-                }
-
-                setFollowedChannels(finalChannels);
-                setWatchedIds(finalWatched);
-                setSettings(serverSettings);
-                writeChannelsCache(finalChannels);
-                writeWatchedCache(finalWatched);
-                writeSettingsCache(serverSettings);
+                const hydrated = await bootstrapApplicationCache({
+                    channels: cachedChannels,
+                    watchedIds: cachedWatched,
+                    settings: cachedSettings,
+                });
+                setFollowedChannels(hydrated.channels);
+                setWatchedIds(hydrated.watchedIds);
+                setSettings(hydrated.settings);
+                writeChannelsCache(hydrated.channels);
+                writeWatchedCache(hydrated.watchedIds);
+                writeSettingsCache(hydrated.settings);
             } catch (err) {
                 console.error("Failed to sync with server, using local cache:", err);
             } finally {
@@ -119,59 +103,32 @@ export default function Dashboard() {
         return () => window.removeEventListener("focus", refreshWatchedState);
     }, [refreshWatchedState]);
 
-    // Enrich channels missing thumbnail/description and persist the enrichment server-side
-    useEffect(() => {
-        if (!hydratedRef.current) return;
-        const enrichMetadata = async () => {
-            const missingMetaIds = followedChannels
-                .filter((c) => !c.thumbnail || !c.description)
-                .map((c) => c.channelId);
-
-            if (missingMetaIds.length === 0) return;
-
-            const enrichedData = await fetchChannelsInfo(missingMetaIds);
-            if (enrichedData.length === 0) return;
-
-            const merged: YouTubeChannel[] = followedChannels.map((channel) => {
-                const match = enrichedData.find((e) => e.channelId === channel.channelId);
-                return match ? { ...channel, ...match } : channel;
-            });
-            setFollowedChannels(merged);
-
-            // Persist each enriched channel server-side
-            for (const channel of merged) {
-                if (missingMetaIds.includes(channel.channelId)) {
-                    upsertChannel(channel).catch((err) =>
-                        console.error(`Failed to persist enriched channel ${channel.channelId}:`, err)
-                    );
-                }
-            }
-        };
-        enrichMetadata();
-    }, [followedChannels]);
-
-    // Fetch videos when channels change
-    const loadVideos = useCallback(async () => {
-        if (followedChannels.length === 0) {
-            setVideos([]);
+    const loadVideos = useCallback(async (append = false, silent = false) => {
+        if (!silent) setLoading(true);
+        try {
+            const result = await fetchCatalogVideos(activeTab, append ? nextVideoCursor : null);
+            setVideos((previous) => append ? [...previous, ...result.videos] : result.videos);
+            setNextVideoCursor(result.nextCursor);
             setVideoLoadError(null);
-            setLoading(false);
-            return;
+        } catch (error) {
+            setVideoLoadError(error instanceof Error ? error.message : "Could not load the local catalogue.");
+        } finally {
+            if (!silent) setLoading(false);
         }
-        setLoading(true);
-        const result = await fetchAllVideos(
-            followedChannels,
-            settings.videoLookbackDays,
-            settings
-        );
-        setVideos(result.videos);
-        setVideoLoadError(result.error);
-        setLoading(false);
-    }, [followedChannels, settings]);
+    }, [activeTab, nextVideoCursor]);
 
     useEffect(() => {
-        loadVideos();
-    }, [loadVideos]);
+        loadVideos(false);
+        // The bootstrap may have started the first background discovery.
+        const refreshTimer = window.setTimeout(() => loadVideos(false, true), 4_000);
+        const catalogTimer = window.setInterval(() => loadVideos(false, true), 30_000);
+        return () => {
+            window.clearTimeout(refreshTimer);
+            window.clearInterval(catalogTimer);
+        };
+        // nextVideoCursor must not restart the initial load after pagination.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, settings]);
 
     const toggleWatched = (id: string) => {
         const willBeWatched = !watchedIds.includes(id);
@@ -230,9 +187,11 @@ export default function Dashboard() {
         try {
             const savedSettings = await putSettings(nextSettings);
             setSettings(savedSettings);
+            await loadVideos(false);
         } catch (err) {
             console.error("Failed to update settings, rolling back:", err);
             setSettings(previousSettings);
+            throw err;
         }
     };
 
@@ -314,6 +273,7 @@ export default function Dashboard() {
 
                         <button
                             onClick={() => setShowSettings(true)}
+                            aria-label="Open settings"
                             className="rounded-full bg-zinc-900 p-2.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors border border-zinc-800"
                         >
                             <Settings2 className="h-5 w-5" />
@@ -362,17 +322,30 @@ export default function Dashboard() {
                         <p className="text-sm font-medium text-zinc-500">Curating your latest releases...</p>
                     </div>
                 ) : filteredVideos.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {filteredVideos.map((video) => (
-                            <VideoCard
-                                key={video.id}
-                                video={video}
-                                isWatched={watchedIds.includes(video.id)}
-                                onToggleWatched={toggleWatched}
-                                onClick={setSelectedVideo}
-                            />
-                        ))}
-                    </div>
+                    <>
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            {filteredVideos.map((video) => (
+                                <VideoCard
+                                    key={video.id}
+                                    video={video}
+                                    isWatched={watchedIds.includes(video.id)}
+                                    onToggleWatched={toggleWatched}
+                                    onClick={setSelectedVideo}
+                                />
+                            ))}
+                        </div>
+                        {nextVideoCursor && (
+                            <div className="mt-8 flex justify-center">
+                                <button
+                                    onClick={() => loadVideos(true)}
+                                    disabled={loading}
+                                    className="rounded-lg border border-border px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900 disabled:opacity-50"
+                                >
+                                    Load more
+                                </button>
+                            </div>
+                        )}
+                    </>
                 ) : (
                     <div className="flex h-[40vh] flex-col items-center justify-center space-y-3 rounded-2xl border border-dashed border-border p-12 text-center">
                         <div className="rounded-full bg-zinc-900 p-4">

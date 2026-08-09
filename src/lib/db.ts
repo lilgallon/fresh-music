@@ -58,6 +58,12 @@ CREATE TABLE IF NOT EXISTS youtube_playlist_entries (
 
 CREATE INDEX IF NOT EXISTS idx_youtube_playlist_entries_state
   ON youtube_playlist_entries (state);
+
+CREATE TABLE IF NOT EXISTS youtube_short_cache (
+  video_id   TEXT PRIMARY KEY,
+  is_short   INTEGER NOT NULL CHECK (is_short IN (0, 1)),
+  checked_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
 `;
 
 let instance: Database.Database | null = null;

@@ -11,12 +11,15 @@ A minimalist dashboard that tracks music releases from selected YouTube channels
 - **Automatic YouTube playlist:** Adds unwatched releases to a private `Fresh Music — Nouveautés` playlist every hour.
 - **YouTube and YouTube Music:** The playlist is available in both apps. YouTube Music only surfaces videos it recognizes as music.
 - **Two-way queue state:** Marking a video watched in Fresh Music removes it from the playlist. Removing a managed item in YouTube marks it watched at the next sync.
-- **New Releases:** Fetches recent uploads from curated channels and filters videos of 60 seconds or less when duration metadata is available.
+- **New Releases:** Fetches recent uploads from curated channels and excludes YouTube Shorts plus current, upcoming, and completed live broadcasts.
+- **Configurable filters:** Optionally ignore case-insensitive title fragments and videos outside a minimum/maximum duration.
 - **Configurable Lookback:** Choose a discovery window from 7 days to 1 year.
 - **Server-side Persistence:** Channels, watched videos, integration state, and settings are stored in SQLite. `localStorage` remains an offline UI cache.
 - **Clean Player:** Watch videos in the dashboard with previous/next navigation.
 
 YouTube does not expose a user's watch history through its official API. Playing a track in YouTube or YouTube Music does not remove it automatically: remove it from the playlist or mark it watched in Fresh Music.
+
+The YouTube Data API exposes reliable live-broadcast metadata but no official `isShort` field. Fresh Music checks the YouTube `/shorts/{videoId}` route for videos up to three minutes long; this HTTP `HEAD` request does not consume Data API quota. Results are cached in SQLite for 30 days and new checks are limited to five concurrent requests. If the best-effort check fails, the video is kept rather than hiding a possible music release.
 
 ## Google Cloud setup
 

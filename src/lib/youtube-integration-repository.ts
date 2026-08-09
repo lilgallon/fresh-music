@@ -309,7 +309,7 @@ export function requestYouTubePlaylistRemoval(videoId: string): void {
 
 export function markYouTubePlaylistEntryRemoved(
     videoId: string,
-    reason: "watched" | "external" | "playlist_recreated"
+    reason: "watched" | "external" | "playlist_recreated" | "filtered"
 ): void {
     getDb()
         .prepare(

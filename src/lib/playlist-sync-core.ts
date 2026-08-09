@@ -9,13 +9,14 @@ import type {
     YouTubeIntegrationRecord,
     YouTubePlaylistEntry,
 } from "./youtube-integration-repository";
+import type { YouTubeContentFilterRules } from "./youtube-content-filter";
 
 export interface PlaylistSyncStore {
     getIntegration(): YouTubeIntegrationRecord | null;
     listChannels(): YouTubeChannel[];
     listWatched(): string[];
     markWatched(videoId: string): void;
-    getSettings(): { videoLookbackDays: number };
+    getSettings(): YouTubeContentFilterRules & { videoLookbackDays: number };
     listEntries(): YouTubePlaylistEntry[];
     prepareEntry(params: {
         videoId: string;
@@ -30,7 +31,10 @@ export interface PlaylistSyncStore {
         sourceChannelId?: string | null;
         publishedAt?: string | null;
     }): void;
-    markEntryRemoved(videoId: string, reason: "watched" | "external" | "playlist_recreated"): void;
+    markEntryRemoved(
+        videoId: string,
+        reason: "watched" | "external" | "playlist_recreated" | "filtered"
+    ): void;
     setEntryError(videoId: string, error: string): void;
     startSync(startedAt: number): void;
     finishSync(params: {
@@ -135,7 +139,8 @@ async function deletePendingEntry(
     dependencies: PlaylistSyncDependencies,
     accessToken: string,
     remoteItems: YouTubeRemotePlaylistItem[],
-    entry: YouTubePlaylistEntry
+    entry: YouTubePlaylistEntry,
+    reason: "watched" | "filtered" = "watched"
 ): Promise<boolean> {
     const remote = findRemoteItem(remoteItems, entry);
     if (remote) {
@@ -149,7 +154,7 @@ async function deletePendingEntry(
             }
         }
     }
-    dependencies.store.markEntryRemoved(entry.videoId, "watched");
+    dependencies.store.markEntryRemoved(entry.videoId, reason);
     return Boolean(remote);
 }
 
@@ -221,6 +226,29 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
 
             const entries = dependencies.store.listEntries();
             const reconciledVideoIds = new Set<string>();
+            const settings = dependencies.store.getSettings();
+
+            const filterCandidates = entries.filter((entry) =>
+                entry.managedByApp && (entry.state === "active" || entry.state === "adding")
+            );
+            const ignoredVideoIds = await dependencies.youtube.findIgnoredVideoIds(
+                accessToken,
+                filterCandidates.map((entry) => entry.videoId),
+                settings
+            );
+            for (const entry of filterCandidates.filter((candidate) =>
+                ignoredVideoIds.has(candidate.videoId)
+            )) {
+                if (
+                    entry.state === "active"
+                    && await deletePendingEntry(dependencies, accessToken, remoteItems, entry, "filtered")
+                ) removed += 1;
+                if (entry.state === "adding") {
+                    dependencies.store.markEntryRemoved(entry.videoId, "filtered");
+                }
+                reconciledVideoIds.add(entry.videoId);
+            }
+
             for (const entry of entries.filter((candidate) => candidate.state === "removal_pending")) {
                 if (await deletePendingEntry(dependencies, accessToken, remoteItems, entry)) removed += 1;
                 reconciledVideoIds.add(entry.videoId);
@@ -232,6 +260,7 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
                 && candidate.managedByApp
                 && initiallyWatched.has(candidate.videoId)
             )) {
+                if (reconciledVideoIds.has(entry.videoId)) continue;
                 if (await deletePendingEntry(dependencies, accessToken, remoteItems, entry)) removed += 1;
                 reconciledVideoIds.add(entry.videoId);
             }
@@ -255,6 +284,7 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
             }
 
             for (const entry of entries.filter((candidate) => candidate.state === "adding")) {
+                if (reconciledVideoIds.has(entry.videoId)) continue;
                 if (await insertPreparedEntry(
                     dependencies,
                     accessToken,
@@ -265,11 +295,11 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
             }
 
             const channels = dependencies.store.listChannels();
-            const settings = dependencies.store.getSettings();
             const videos = await dependencies.youtube.discoverVideos(
                 accessToken,
                 channels,
-                settings.videoLookbackDays
+                settings.videoLookbackDays,
+                settings
             );
             discovered = videos.length;
 

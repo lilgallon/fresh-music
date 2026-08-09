@@ -1,4 +1,5 @@
 import { YouTubeVideo, YouTubeChannel } from "@/types/youtube";
+import type { YouTubeContentFilterRules } from "./youtube-content-filter";
 
 const BASE_URL = "https://www.googleapis.com/youtube/v3";
 let cachedApiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "";
@@ -30,7 +31,11 @@ function getCutoffDate(lookbackDays: number): Date {
     return date;
 }
 
-export async function fetchLatestVideos(channelId: string, lookbackDays: number = 30): Promise<YouTubeVideo[]> {
+export async function fetchLatestVideos(
+    channelId: string,
+    lookbackDays: number = 30,
+    filterRules?: YouTubeContentFilterRules
+): Promise<YouTubeVideo[]> {
     const apiKey = await getApiKey();
     if (!apiKey) {
         console.error("YouTube API Key is missing");
@@ -69,9 +74,9 @@ export async function fetchLatestVideos(channelId: string, lookbackDays: number 
                         );
                         if (retryResponse.ok) {
                             const retryData = await retryResponse.json();
-                            return filterShortVideos(
+                            return filterIgnoredContent(
                                 filterVideosByDate(mapPlaylistItems(retryData.items), cutoffDate),
-                                apiKey
+                                filterRules
                             );
                         }
                     }
@@ -84,9 +89,9 @@ export async function fetchLatestVideos(channelId: string, lookbackDays: number 
         }
 
         const data = await response.json();
-        return filterShortVideos(
+        return filterIgnoredContent(
             filterVideosByDate(mapPlaylistItems(data.items), cutoffDate),
-            apiKey
+            filterRules
         );
     } catch (error) {
         console.error(`Error fetching videos for channel ${channelId}:`, error);
@@ -121,43 +126,38 @@ function filterVideosByDate(videos: YouTubeVideo[], cutoffDate: Date): YouTubeVi
     return videos.filter((video) => new Date(video.publishedAt) >= cutoffDate);
 }
 
-function parseIsoDurationSeconds(duration: string): number | null {
-    const match = duration.match(/^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/);
-    if (!match) return null;
-    const [, days = "0", hours = "0", minutes = "0", seconds = "0"] = match;
-    return Number(days) * 86400 + Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
-}
-
-async function filterShortVideos(videos: YouTubeVideo[], apiKey: string): Promise<YouTubeVideo[]> {
+async function filterIgnoredContent(
+    videos: YouTubeVideo[],
+    rules?: YouTubeContentFilterRules
+): Promise<YouTubeVideo[]> {
     if (videos.length === 0) return videos;
 
     try {
-        const response = await fetch(
-            `${BASE_URL}/videos?part=contentDetails&id=${encodeURIComponent(videos.map((video) => video.id).join(","))}&key=${apiKey}`
-        );
-        if (!response.ok) return videos;
-        const data = await response.json() as {
-            items?: Array<{ id: string; contentDetails?: { duration?: string } }>;
-        };
-        const durationById = new Map(
-            (data.items ?? []).map((item) => [
-                item.id,
-                item.contentDetails?.duration
-                    ? parseIsoDurationSeconds(item.contentDetails.duration)
-                    : null,
-            ])
-        );
-        return videos.filter((video) => {
-            const seconds = durationById.get(video.id);
-            return seconds == null || seconds > 60;
+        const response = await fetch("/api/youtube/content-filter", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                videoIds: videos.map((video) => video.id),
+                rules,
+            }),
         });
+        if (!response.ok) return videos;
+        const data = await response.json() as { ignoredVideoIds?: string[] };
+        const ignored = new Set(data.ignoredVideoIds ?? []);
+        return videos.filter((video) => !ignored.has(video.id));
     } catch {
         return videos;
     }
 }
 
-export async function fetchAllVideos(channels: { channelId: string }[], lookbackDays: number = 30): Promise<YouTubeVideo[]> {
-    const allVideosPromises = channels.map((channel) => fetchLatestVideos(channel.channelId, lookbackDays));
+export async function fetchAllVideos(
+    channels: { channelId: string }[],
+    lookbackDays: number = 30,
+    filterRules?: YouTubeContentFilterRules
+): Promise<YouTubeVideo[]> {
+    const allVideosPromises = channels.map((channel) =>
+        fetchLatestVideos(channel.channelId, lookbackDays, filterRules)
+    );
     const results = await Promise.all(allVideosPromises);
 
     // Flatten, sort by date (newest first), and return

@@ -157,10 +157,14 @@ export default function Dashboard() {
             return;
         }
         setLoading(true);
-        const data = await fetchAllVideos(followedChannels, settings.videoLookbackDays);
+        const data = await fetchAllVideos(
+            followedChannels,
+            settings.videoLookbackDays,
+            settings
+        );
         setVideos(data);
         setLoading(false);
-    }, [followedChannels, settings.videoLookbackDays]);
+    }, [followedChannels, settings]);
 
     useEffect(() => {
         loadVideos();

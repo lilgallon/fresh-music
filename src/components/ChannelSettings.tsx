@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, Search, Plus, Trash2, Settings, Loader2, Download, Upload } from "lucide-react";
 import { YouTubeChannel } from "@/types/youtube";
 import { SearchResultChannel, searchChannels } from "@/lib/youtube";
@@ -34,6 +34,22 @@ export default function ChannelSettings({
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<SearchResultChannel[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [excludedTitleTerms, setExcludedTitleTerms] = useState(
+        settings.excludedTitleTerms.join(", ")
+    );
+    const [minimumDuration, setMinimumDuration] = useState(
+        settings.minimumDurationSeconds?.toString() ?? ""
+    );
+    const [maximumDuration, setMaximumDuration] = useState(
+        settings.maximumDurationSeconds?.toString() ?? ""
+    );
+    const [isSavingFilters, setIsSavingFilters] = useState(false);
+
+    useEffect(() => {
+        setExcludedTitleTerms(settings.excludedTitleTerms.join(", "));
+        setMinimumDuration(settings.minimumDurationSeconds?.toString() ?? "");
+        setMaximumDuration(settings.maximumDurationSeconds?.toString() ?? "");
+    }, [settings]);
 
     const handleSearch = async () => {
         if (!searchQuery.trim()) return;
@@ -77,9 +93,19 @@ export default function ChannelSettings({
                 }
 
                 if (confirm("This will overwrite your current settings. Continue?")) {
-                    if (data.settings?.videoLookbackDays) {
+                    if (data.settings) {
                         onUpdateSettings({
-                            videoLookbackDays: Number(data.settings.videoLookbackDays),
+                            ...settings,
+                            videoLookbackDays: Number(
+                                data.settings.videoLookbackDays ?? settings.videoLookbackDays
+                            ),
+                            excludedTitleTerms: Array.isArray(data.settings.excludedTitleTerms)
+                                ? data.settings.excludedTitleTerms
+                                : settings.excludedTitleTerms,
+                            minimumDurationSeconds:
+                                data.settings.minimumDurationSeconds ?? settings.minimumDurationSeconds,
+                            maximumDurationSeconds:
+                                data.settings.maximumDurationSeconds ?? settings.maximumDurationSeconds,
                         });
                     }
                     onImportData(data.followedChannels, data.watchedVideoIds);
@@ -108,6 +134,23 @@ export default function ChannelSettings({
 
     const removeChannel = (channelId: string) => {
         onRemoveChannel(channelId);
+    };
+
+    const saveContentFilters = async () => {
+        setIsSavingFilters(true);
+        try {
+            await onUpdateSettings({
+                ...settings,
+                excludedTitleTerms: excludedTitleTerms
+                    .split(",")
+                    .map((term) => term.trim())
+                    .filter(Boolean),
+                minimumDurationSeconds: minimumDuration === "" ? null : Number(minimumDuration),
+                maximumDurationSeconds: maximumDuration === "" ? null : Number(maximumDuration),
+            });
+        } finally {
+            setIsSavingFilters(false);
+        }
     };
 
     // Filter out search results that are already followed
@@ -190,6 +233,80 @@ export default function ChannelSettings({
                                 </select>
                                 <span className="text-sm text-zinc-500">per channel</span>
                             </div>
+                        </div>
+                    </section>
+
+                    {/* Content Filters Section */}
+                    <section className="space-y-4">
+                        <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-400">
+                            Content Filters
+                        </h3>
+                        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-800/30 p-4">
+                            <p className="text-xs leading-relaxed text-zinc-500">
+                                Shorts and live broadcasts are always ignored. Add optional rules below;
+                                title matching is case-insensitive.
+                            </p>
+                            <div>
+                                <label htmlFor="excluded-title-terms" className="block text-sm font-medium text-white">
+                                    Ignore titles containing
+                                </label>
+                                <input
+                                    id="excluded-title-terms"
+                                    type="text"
+                                    value={excludedTitleTerms}
+                                    onChange={(event) => setExcludedTitleTerms(event.target.value)}
+                                    placeholder="teaser, trailer, interview"
+                                    className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+                                />
+                                <p className="mt-1 text-xs text-zinc-600">Separate multiple fragments with commas.</p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label htmlFor="minimum-duration" className="block text-sm font-medium text-white">
+                                        Minimum duration
+                                    </label>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            id="minimum-duration"
+                                            type="number"
+                                            min={0}
+                                            max={86400}
+                                            value={minimumDuration}
+                                            onChange={(event) => setMinimumDuration(event.target.value)}
+                                            placeholder="No minimum"
+                                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+                                        />
+                                        <span className="text-xs text-zinc-500">seconds</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label htmlFor="maximum-duration" className="block text-sm font-medium text-white">
+                                        Maximum duration
+                                    </label>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            id="maximum-duration"
+                                            type="number"
+                                            min={0}
+                                            max={86400}
+                                            value={maximumDuration}
+                                            onChange={(event) => setMaximumDuration(event.target.value)}
+                                            placeholder="No maximum"
+                                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+                                        />
+                                        <span className="text-xs text-zinc-500">seconds</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={saveContentFilters}
+                                disabled={isSavingFilters}
+                                className="inline-flex items-center gap-2 rounded-lg bg-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
+                            >
+                                {isSavingFilters && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                Save filters
+                            </button>
                         </div>
                     </section>
 

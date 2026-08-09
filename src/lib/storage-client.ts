@@ -7,10 +7,16 @@ const LS_SETTINGS = "freshMusicSettings";
 
 export interface AppSettings {
     videoLookbackDays: number;
+    excludedTitleTerms: string[];
+    minimumDurationSeconds: number | null;
+    maximumDurationSeconds: number | null;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
     videoLookbackDays: 30,
+    excludedTitleTerms: [],
+    minimumDurationSeconds: null,
+    maximumDurationSeconds: null,
 };
 
 function readLS<T>(key: string): T | null {
@@ -38,7 +44,15 @@ export function readWatchedCache(): string[] | null {
 }
 
 export function readSettingsCache(): AppSettings | null {
-    return readLS<AppSettings>(LS_SETTINGS);
+    const cached = readLS<Partial<AppSettings>>(LS_SETTINGS);
+    if (!cached) return null;
+    return {
+        ...DEFAULT_SETTINGS,
+        ...cached,
+        excludedTitleTerms: Array.isArray(cached.excludedTitleTerms)
+            ? cached.excludedTitleTerms.filter((term): term is string => typeof term === "string")
+            : [],
+    };
 }
 
 export function writeChannelsCache(channels: YouTubeChannel[]): void {

@@ -53,7 +53,14 @@ class MemoryStore implements PlaylistSyncStore {
     listChannels() { return [{ channelId: "channel", name: "Channel", isMusicOnly: true }]; }
     listWatched() { return Array.from(this.watched); }
     markWatched(id: string) { this.watched.add(id); }
-    getSettings() { return { videoLookbackDays: 30 }; }
+    getSettings() {
+        return {
+            videoLookbackDays: 30,
+            excludedTitleTerms: [],
+            minimumDurationSeconds: null,
+            maximumDurationSeconds: null,
+        };
+    }
     listEntries() { return Array.from(this.entries.values()).map((entry) => ({ ...entry })); }
     startSync(startedAt: number) {
         if (this.integration) {
@@ -116,7 +123,10 @@ class MemoryStore implements PlaylistSyncStore {
             lastError: null,
         });
     }
-    markEntryRemoved(videoId: string, reason: "watched" | "external" | "playlist_recreated") {
+    markEntryRemoved(
+        videoId: string,
+        reason: "watched" | "external" | "playlist_recreated" | "filtered"
+    ) {
         const previous = this.entries.get(videoId);
         if (!previous) return;
         this.entries.set(videoId, {
@@ -142,6 +152,7 @@ class FakeYouTubeGateway implements YouTubeGateway {
     listError: Error | null = null;
     listBarrier: Promise<void> | null = null;
     playlistExists = true;
+    ignoredVideoIds = new Set<string>();
 
     async getMyAccount() { return { channelId: "mine", title: "Me" }; }
     async getPlaylist() {
@@ -165,7 +176,14 @@ class FakeYouTubeGateway implements YouTubeGateway {
         this.deleted.push(playlistItemId);
         this.remoteItems = this.remoteItems.filter((item) => item.id !== playlistItemId);
     }
-    async discoverVideos() { return this.discovered.map((item) => ({ ...item })); }
+    async findIgnoredVideoIds(_accessToken: string, videoIds: string[]) {
+        return new Set(videoIds.filter((id) => this.ignoredVideoIds.has(id)));
+    }
+    async discoverVideos() {
+        return this.discovered
+            .filter((item) => !this.ignoredVideoIds.has(item.id))
+            .map((item) => ({ ...item }));
+    }
 }
 
 function runner(store: MemoryStore, youtube: FakeYouTubeGateway) {
@@ -280,6 +298,35 @@ describe("playlist synchronization", () => {
             state: "removed",
             removalReason: "watched",
         });
+    });
+
+    it("removes managed Shorts and live videos without marking them watched", async () => {
+        const store = new MemoryStore();
+        const youtube = new FakeYouTubeGateway();
+        youtube.ignoredVideoIds.add("short-or-live");
+        youtube.remoteItems = [{ id: "ignored-item", videoId: "short-or-live" }];
+        youtube.discovered = [video("short-or-live", "2026-08-01T00:00:00Z")];
+        store.entries.set("short-or-live", {
+            videoId: "short-or-live",
+            sourceChannelId: "channel",
+            publishedAt: "2026-08-01T00:00:00Z",
+            playlistItemId: "ignored-item",
+            state: "active",
+            managedByApp: true,
+            removalReason: null,
+            lastError: null,
+        });
+
+        const result = await runner(store, youtube)();
+
+        expect(youtube.deleted).toEqual(["ignored-item"]);
+        expect(store.watched.has("short-or-live")).toBe(false);
+        expect(store.entries.get("short-or-live")).toMatchObject({
+            state: "removed",
+            removalReason: "filtered",
+        });
+        expect(result.removed).toBe(1);
+        expect(youtube.insertOrder).toEqual([]);
     });
 
     it("keeps a failed deletion pending and retries it on the next sync", async () => {

@@ -1,6 +1,13 @@
 import "server-only";
 
 import { YouTubeChannel, YouTubeVideo } from "@/types/youtube";
+import {
+    findIgnoredYouTubeVideoIds,
+    parseIsoDurationSeconds,
+    YouTubeContentFilterRules,
+    YouTubeVideoMetadata,
+} from "./youtube-content-filter";
+import { isYouTubeShortCached } from "./youtube-short-cache";
 
 const BASE_URL = "https://www.googleapis.com/youtube/v3";
 export const FRESH_MUSIC_PLAYLIST_TITLE = "Fresh Music — Nouveautés";
@@ -83,10 +90,16 @@ export interface YouTubeGateway {
     listPlaylistItems(accessToken: string, playlistId: string): Promise<YouTubeRemotePlaylistItem[]>;
     insertPlaylistItem(accessToken: string, playlistId: string, videoId: string): Promise<string>;
     deletePlaylistItem(accessToken: string, playlistItemId: string): Promise<void>;
+    findIgnoredVideoIds(
+        accessToken: string,
+        videoIds: string[],
+        rules?: YouTubeContentFilterRules
+    ): Promise<Set<string>>;
     discoverVideos(
         accessToken: string,
         channels: Array<Pick<YouTubeChannel, "channelId">>,
-        lookbackDays: number
+        lookbackDays: number,
+        rules?: YouTubeContentFilterRules
     ): Promise<DiscoveredYouTubeVideo[]>;
 }
 
@@ -126,43 +139,57 @@ interface PlaylistItemsResponse {
 }
 
 interface VideosResponse {
-    items?: Array<{ id: string; contentDetails?: { duration?: string } }>;
+    items?: Array<{
+        id: string;
+        contentDetails?: { duration?: string };
+        snippet?: {
+            title?: string;
+            liveBroadcastContent?: "live" | "upcoming" | "none";
+        };
+        liveStreamingDetails?: object;
+    }>;
 }
 
-function parseIsoDurationSeconds(duration: string): number | null {
-    const match = duration.match(/^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/);
-    if (!match) return null;
-    const [, days = "0", hours = "0", minutes = "0", seconds = "0"] = match;
-    return Number(days) * 86400 + Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
-}
-
-async function filterShortVideos(
+async function findIgnoredVideoIds(
     accessToken: string,
-    videos: DiscoveredYouTubeVideo[]
-): Promise<DiscoveredYouTubeVideo[]> {
-    if (videos.length === 0) return videos;
+    videoIds: string[],
+    rules?: YouTubeContentFilterRules
+): Promise<Set<string>> {
+    if (videoIds.length === 0) return new Set();
 
     try {
-        const data = await authorizedRequest<VideosResponse>(
-            accessToken,
-            `/videos?part=contentDetails&id=${encodeURIComponent(videos.map((video) => video.id).join(","))}`
-        );
-        const durationById = new Map(
-            (data.items ?? []).map((item) => [
-                item.id,
-                item.contentDetails?.duration
+        const uniqueIds = Array.from(new Set(videoIds));
+        const metadata: YouTubeVideoMetadata[] = [];
+        for (let offset = 0; offset < uniqueIds.length; offset += 50) {
+            const chunk = uniqueIds.slice(offset, offset + 50);
+            const data = await authorizedRequest<VideosResponse>(
+                accessToken,
+                `/videos?part=contentDetails,snippet,liveStreamingDetails&id=${encodeURIComponent(chunk.join(","))}`
+            );
+            metadata.push(...(data.items ?? []).map((item) => ({
+                id: item.id,
+                title: item.snippet?.title ?? "",
+                durationSeconds: item.contentDetails?.duration
                     ? parseIsoDurationSeconds(item.contentDetails.duration)
                     : null,
-            ])
-        );
-        return videos.filter((video) => {
-            const seconds = durationById.get(video.id);
-            return seconds == null || seconds > 60;
-        });
+                liveBroadcastContent: item.snippet?.liveBroadcastContent ?? null,
+                hasLiveStreamingDetails: item.liveStreamingDetails != null,
+            })));
+        }
+        return findIgnoredYouTubeVideoIds(metadata, rules, isYouTubeShortCached);
     } catch (error) {
-        console.warn("Could not filter short YouTube videos; keeping the discovered list:", error);
-        return videos;
+        console.warn("Could not identify Shorts or live videos; keeping the discovered list:", error);
+        return new Set();
     }
+}
+
+async function filterIgnoredContent(
+    accessToken: string,
+    videos: DiscoveredYouTubeVideo[],
+    rules?: YouTubeContentFilterRules
+): Promise<DiscoveredYouTubeVideo[]> {
+    const ignored = await findIgnoredVideoIds(accessToken, videos.map((video) => video.id), rules);
+    return videos.filter((video) => !ignored.has(video.id));
 }
 
 async function getUploadsPlaylistId(accessToken: string, channelId: string): Promise<string | null> {
@@ -189,7 +216,8 @@ async function getUploadsPlaylistId(accessToken: string, channelId: string): Pro
 async function discoverChannelVideos(
     accessToken: string,
     channelId: string,
-    lookbackDays: number
+    lookbackDays: number,
+    rules?: YouTubeContentFilterRules
 ): Promise<DiscoveredYouTubeVideo[]> {
     const playlistId = await getUploadsPlaylistId(accessToken, channelId);
     if (!playlistId) return [];
@@ -215,7 +243,7 @@ async function discoverChannelVideos(
                 sourceChannelId: channelId,
             }];
         });
-        return filterShortVideos(accessToken, videos);
+        return filterIgnoredContent(accessToken, videos, rules);
     } catch (error) {
         console.warn(`Could not discover videos for channel ${channelId}:`, error);
         return [];
@@ -337,9 +365,16 @@ export const youtubeGateway: YouTubeGateway = {
         );
     },
 
-    async discoverVideos(accessToken, channels, lookbackDays) {
+    findIgnoredVideoIds,
+
+    async discoverVideos(accessToken, channels, lookbackDays, rules) {
         const channelVideos = await Promise.all(
-            channels.map((channel) => discoverChannelVideos(accessToken, channel.channelId, lookbackDays))
+            channels.map((channel) => discoverChannelVideos(
+                accessToken,
+                channel.channelId,
+                lookbackDays,
+                rules
+            ))
         );
         const byId = new Map<string, DiscoveredYouTubeVideo>();
         for (const video of channelVideos.flat()) byId.set(video.id, video);

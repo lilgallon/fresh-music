@@ -43,7 +43,7 @@ The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persis
 
 ### Settings
 
-The video lookback window is stored as `videoLookbackDays` (default `30`, clamped to `1..365`) in `app_settings` under the repository key `video_lookback_days`. It is exposed through `GET/PUT /api/settings` and cached in localStorage by `src/lib/storage-client.ts`. The settings modal (`src/components/ChannelSettings.tsx`) currently offers preset windows from 7 days to 1 year.
+The video lookback window is stored as `videoLookbackDays` (default `30`, clamped to `1..365`) in `app_settings` under the repository key `video_lookback_days`. Optional content filters are stored under `excluded_title_terms`, `minimum_duration_seconds`, and `maximum_duration_seconds`. They are exposed through `GET/PUT /api/settings`, included in backup import/export, and cached in localStorage by `src/lib/storage-client.ts`. The settings modal (`src/components/ChannelSettings.tsx`) offers preset windows from 7 days to 1 year plus case-insensitive title fragments and duration bounds in seconds.
 
 ### YouTube API key — dual source (important)
 
@@ -62,7 +62,7 @@ When changing how the key is sourced, update **both** the `NEXT_PUBLIC_` build-t
 
 `fetchLatestVideos` first tries the cheap trick of converting a channel ID `UC…` into its uploads playlist ID `UU…`. If that 404s it falls back to a real `channels?part=contentDetails` lookup. Errors are swallowed and return `[]` to keep the UI stable — don't refactor this to throw.
 
-The YouTube Data API does not expose a reliable `isShort`/`type=short` flag in the uploads playlist response. After date filtering, `fetchLatestVideos` calls `videos?part=contentDetails` and excludes videos with a duration of 60 seconds or less. If that metadata call fails, it returns the unfiltered list rather than breaking the dashboard.
+The YouTube Data API does not expose a reliable `isShort`/`type=short` flag. After date filtering, Fresh Music gets duration and live metadata from `videos.list`; current, upcoming, and completed broadcasts are excluded. Videos up to three minutes are checked with a server-side `HEAD /shorts/{videoId}` request: true Shorts stay on that route while regular videos redirect to `/watch`. The check uses no Data API quota, is limited to five concurrent requests, and is cached for 30 days in `youtube_short_cache`. It is best-effort and fail-open so a YouTube page failure does not hide a music release. User title/duration rules are applied before the Shorts check. The same rules are used by the dashboard and OAuth playlist sync; managed items that match are removed with the local reason `filtered` and can be rediscovered if configurable rules are later relaxed.
 
 The lookback setting is applied by fetching up to 50 recent uploads per channel and filtering by `publishedAt >= now - videoLookbackDays`. If a channel publishes more than 50 videos inside the selected window, older videos in that window may not be present without adding pagination.
 

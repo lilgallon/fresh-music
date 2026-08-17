@@ -96,7 +96,7 @@ export async function fetchCatalogVideos(
     tab: "new" | "history",
     cursor: string | null = null,
     limit = 50
-): Promise<{ videos: YouTubeVideo[]; nextCursor: string | null }> {
+): Promise<{ videos: YouTubeVideo[]; nextCursor: string | null; newCount: number }> {
     const cursorParam = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
     const res = await fetch(`/api/videos?tab=${tab}&limit=${limit}${cursorParam}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`GET /api/videos failed: ${res.status}`);

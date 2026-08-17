@@ -46,6 +46,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
     const [nextVideoCursor, setNextVideoCursor] = useState<string | null>(null);
+    const [newVideoCount, setNewVideoCount] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<"new" | "history">("new");
     const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
     const [newVideoSession, setNewVideoSession] = useState<YouTubeVideo[]>([]);
@@ -153,6 +154,7 @@ export default function Dashboard() {
             const result = await fetchCatalogVideos(activeTab, append ? nextVideoCursor : null);
             setVideos((previous) => append ? [...previous, ...result.videos] : result.videos);
             setNextVideoCursor(result.nextCursor);
+            setNewVideoCount(result.newCount);
             setVideoLoadError(null);
         } catch (error) {
             setVideoLoadError(error instanceof Error ? error.message : "Could not load the local catalogue.");
@@ -283,6 +285,7 @@ export default function Dashboard() {
                 setFeedbackAction(action);
                 await wait(ACTION_ANIMATION_MS);
                 setWatchedIds((previous) => previous.includes(video.id) ? previous : [...previous, video.id]);
+                setNewVideoCount((previous) => previous == null ? null : Math.max(0, previous - 1));
                 advanceFromVideo(sessionBefore, video);
                 showToast({
                     message: `« ${video.title} » marquée comme vue`,
@@ -290,6 +293,7 @@ export default function Dashboard() {
                     action: async () => {
                         await deleteWatched(video.id);
                         setWatchedIds((previous) => previous.filter((id) => id !== video.id));
+                        setNewVideoCount((previous) => previous == null ? null : previous + 1);
                         restoreSession(sessionBefore, video);
                     },
                 });
@@ -300,6 +304,7 @@ export default function Dashboard() {
             setFeedbackAction(action);
             await wait(ACTION_ANIMATION_MS);
             setWatchedIds((previous) => previous.includes(video.id) ? previous : [...previous, video.id]);
+            setNewVideoCount((previous) => previous == null ? null : Math.max(0, previous - 1));
             advanceFromVideo(sessionBefore, video);
             void refreshYouTubeStatus();
             showToast({
@@ -308,6 +313,7 @@ export default function Dashboard() {
                 action: async () => {
                     await undoYouTubeVideoLike(video.id, likeResult.previousRating);
                     setWatchedIds((previous) => previous.filter((id) => id !== video.id));
+                    setNewVideoCount((previous) => previous == null ? null : previous + 1);
                     restoreSession(sessionBefore, video);
                     void refreshYouTubeStatus();
                 },
@@ -328,6 +334,7 @@ export default function Dashboard() {
 
     async function toggleWatched(video: YouTubeVideo): Promise<void> {
         const wasWatched = watchedIds.includes(video.id);
+        const changesKnownNewVideo = activeTab === "new" && !wasWatched;
         setWatchedIds((previous) => wasWatched
             ? previous.filter((id) => id !== video.id)
             : [...previous, video.id]
@@ -336,15 +343,20 @@ export default function Dashboard() {
         try {
             if (wasWatched) {
                 await deleteWatched(video.id);
+                await loadVideos(false, true);
                 return;
             }
             await postWatched(video.id);
+            if (changesKnownNewVideo) {
+                setNewVideoCount((previous) => previous == null ? null : Math.max(0, previous - 1));
+            }
             showToast({
                 message: `« ${video.title} » marquée comme vue`,
                 tone: "success",
                 action: async () => {
                     await deleteWatched(video.id);
                     setWatchedIds((previous) => previous.filter((id) => id !== video.id));
+                    setNewVideoCount((previous) => previous == null ? null : previous + 1);
                 },
             });
         } catch (error) {
@@ -368,7 +380,11 @@ export default function Dashboard() {
 
     return (
         <div className="min-h-screen bg-background text-foreground selection:bg-zinc-800">
-            <AppNavbar activeSection={activeTab} onSelectTab={selectTab} />
+            <AppNavbar
+                activeSection={activeTab}
+                onSelectTab={selectTab}
+                newCount={newVideoCount}
+            />
 
             <main className="mx-auto max-w-7xl px-4 py-8 md:px-8">
                 <YouTubeQuotaBanner />

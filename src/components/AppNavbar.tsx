@@ -8,6 +8,7 @@ type AppSection = "new" | "history" | "settings";
 interface AppNavbarProps {
     activeSection: AppSection;
     onSelectTab?: (tab: "new" | "history") => void;
+    newCount?: number | null;
 }
 
 function tabClass(active: boolean, mobile = false): string {
@@ -20,7 +21,7 @@ function tabClass(active: boolean, mobile = false): string {
     ].join(" ");
 }
 
-export default function AppNavbar({ activeSection, onSelectTab }: AppNavbarProps) {
+export default function AppNavbar({ activeSection, onSelectTab, newCount }: AppNavbarProps) {
     const renderTab = (tab: "new" | "history", mobile = false) => {
         const label = tab === "new" ? "New" : "History";
         const Icon = tab === "new" ? PlayCircle : History;
@@ -32,6 +33,14 @@ export default function AppNavbar({ activeSection, onSelectTab }: AppNavbarProps
                     aria-current={activeSection === tab ? "page" : undefined}>
                     <Icon className="h-4 w-4" />
                     <span>{label}</span>
+                    {tab === "new" && newCount != null && (
+                        <span
+                            aria-label={`${newCount} new music releases`}
+                            className="min-w-5 rounded-full bg-zinc-700 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-zinc-200"
+                        >
+                            {newCount}
+                        </span>
+                    )}
                 </button>
             );
         }
@@ -41,6 +50,14 @@ export default function AppNavbar({ activeSection, onSelectTab }: AppNavbarProps
                 aria-current={activeSection === tab ? "page" : undefined}>
                 <Icon className="h-4 w-4" />
                 <span>{label}</span>
+                {tab === "new" && newCount != null && (
+                    <span
+                        aria-label={`${newCount} new music releases`}
+                        className="min-w-5 rounded-full bg-zinc-700 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-zinc-200"
+                    >
+                        {newCount}
+                    </span>
+                )}
             </Link>
         );
     };

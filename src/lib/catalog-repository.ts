@@ -211,16 +211,24 @@ export function listCatalogVideos(
     settings: AppSettings,
     limit: number,
     offset: number
-): { videos: YouTubeVideo[]; nextCursor: string | null } {
+): { videos: YouTubeVideo[]; nextCursor: string | null; newCount: number } {
     const cutoff = Date.now() - settings.videoLookbackDays * 24 * 60 * 60 * 1000;
-    const all = listRows()
-        .filter((row) => tab === "history" || row.is_followed_channel === 1)
-        .map(rowToVideo)
-        .filter((video) => tab === "history"
-            ? video.watchedAt != null
-            : video.watchedAt == null
-                && new Date(video.publishedAt).getTime() >= cutoff
-                && isCatalogEligible(video, settings))
+    const candidates = listRows().map((row) => ({ row, video: rowToVideo(row) }));
+    const newVideos = candidates
+        .filter(({ row, video }) =>
+            row.is_followed_channel === 1
+            && video.watchedAt == null
+            && new Date(video.publishedAt).getTime() >= cutoff
+            && isCatalogEligible(video, settings)
+        )
+        .map(({ video }) => video)
+        .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt));
+    const all = (tab === "new"
+        ? newVideos
+        : candidates
+            .map(({ video }) => video)
+            .filter((video) => video.watchedAt != null)
+    )
         .sort((left, right) => {
             if (tab === "history") {
                 const watchedOrder = (right.watchedAt ?? "").localeCompare(left.watchedAt ?? "");
@@ -232,6 +240,7 @@ export function listCatalogVideos(
     return {
         videos: page,
         nextCursor: offset + limit < all.length ? String(offset + limit) : null,
+        newCount: newVideos.length,
     };
 }
 

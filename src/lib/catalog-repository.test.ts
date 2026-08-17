@@ -23,14 +23,19 @@ import { DEFAULT_SETTINGS } from "../types/settings";
 
 const now = new Date().toISOString();
 
-function addCatalogVideo(id: string, channelId: string, title = `Video ${id}`): void {
+function addCatalogVideo(
+    id: string,
+    channelId: string,
+    title = `Video ${id}`,
+    publishedAt = now
+): void {
     upsertCatalogVideos([{
         id,
         channelId,
         title,
         channelTitle: `Channel ${channelId}`,
         thumbnail: "",
-        publishedAt: now,
+        publishedAt,
         durationSeconds: 240,
         liveStatus: "none",
         isShort: false,
@@ -121,6 +126,41 @@ describe("catalogue channel scope", () => {
         ]));
         expect(listEligibleUnwatchedCatalogVideos(settings).map((video) => video.id))
             .toEqual(["video-b"]);
+    });
+
+    it("returns an exact New count independently of tab and pagination", () => {
+        addChannel("channel-a");
+        addChannel("channel-removed");
+        addCatalogVideo("new-a", "channel-a");
+        addCatalogVideo(
+            "new-b",
+            "channel-a",
+            "Video new-b",
+            new Date(new Date(now).getTime() - 1_000).toISOString()
+        );
+        addCatalogVideo("watched", "channel-a");
+        addCatalogVideo("filtered", "channel-a", "Album teaser");
+        addCatalogVideo("old", "channel-a", "Old release", "2025-01-01T00:00:00.000Z");
+        addCatalogVideo("removed", "channel-removed");
+        removeChannel("channel-removed");
+        getDb().prepare("INSERT INTO watched_videos (video_id) VALUES (?)").run("watched");
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            excludedTitleTerms: ["teaser"],
+        };
+
+        expect(listCatalogVideos("new", settings, 1, 0)).toMatchObject({
+            newCount: 2,
+            nextCursor: "1",
+            videos: [{ id: "new-a" }],
+        });
+        expect(listCatalogVideos("history", settings, 50, 0)).toMatchObject({
+            newCount: 2,
+            videos: [{ id: "watched" }],
+        });
+
+        getDb().prepare("DELETE FROM watched_videos WHERE video_id = ?").run("watched");
+        expect(listCatalogVideos("new", settings, 50, 0).newCount).toBe(3);
     });
 });
 

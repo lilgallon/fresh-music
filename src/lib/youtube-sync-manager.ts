@@ -12,6 +12,7 @@ import { getYouTubeIntegration, listYouTubePlaylistEntries } from "./youtube-int
 import {
     getLatestSyncRun,
     startSyncRun,
+    recordSyncRunVideos,
     trimSyncRuns,
     updateSyncRun,
     type SyncRunProgress,
@@ -42,6 +43,7 @@ async function execute(runId: number): Promise<void> {
     try {
         updateSyncRun(runId, { phase: "initializing", ...pendingCounts() });
         const discovery = await discoverYouTubeCatalog(runId);
+        recordSyncRunVideos(runId, "filtered", discovery.filteredVideos);
         updateSyncRun(runId, {
             discovered: discovery.discovered,
             catalogued: discovery.catalogued,
@@ -54,6 +56,8 @@ async function execute(runId: number): Promise<void> {
         if (integration?.encryptedRefreshToken && integration.playlistId) {
             const result = await synchronizeYouTubePlaylist((phase, values) => {
                 updateSyncRun(runId, { phase, ...(values ?? {}) });
+            }, (action, videoId, filterReason) => {
+                recordSyncRunVideos(runId, action, [{ videoId, filterReason }]);
             });
             added = result.added;
             removed = result.removed;

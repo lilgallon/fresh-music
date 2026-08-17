@@ -17,12 +17,68 @@ import {
     recreateYouTubePlaylist,
     syncYouTubePlaylist,
 } from "@/lib/storage-client";
-import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
+import {
+    YouTubeIntegrationPublicStatus,
+    type YouTubeSyncVideo,
+} from "@/types/youtube-integration";
 import SettingHelpTooltip from "./SettingHelpTooltip";
 import type { AppSettings } from "@/types/settings";
 import YouTubeErrorMessage from "./YouTubeErrorMessage";
 
 type Action = "sync" | "recreate" | "disconnect" | null;
+
+function SyncVideoList({
+    title,
+    emptyLabel,
+    videos,
+    showFilterReason = false,
+}: {
+    title: string;
+    emptyLabel: string;
+    videos: YouTubeSyncVideo[];
+    showFilterReason?: boolean;
+}) {
+    return (
+        <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/30">
+            <h4 className="border-b border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300">
+                {title}
+            </h4>
+            {videos.length === 0 ? (
+                <p className="px-3 py-4 text-xs text-zinc-600">{emptyLabel}</p>
+            ) : (
+                <ul className="max-h-64 divide-y divide-zinc-800/80 overflow-y-auto">
+                    {videos.map((video) => (
+                        <li key={video.id}>
+                            <a
+                                href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.id)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-start justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-zinc-800/40"
+                            >
+                                <span className="min-w-0">
+                                    <span className="block truncate text-xs font-medium text-zinc-200">
+                                        {video.title}
+                                    </span>
+                                    {video.channelTitle && (
+                                        <span className="mt-0.5 block truncate text-[11px] text-zinc-600">
+                                            {video.channelTitle}
+                                        </span>
+                                    )}
+                                    {showFilterReason && video.filterReason && (
+                                        <span className="mt-1 block text-[11px] leading-snug text-amber-500/80">
+                                            {video.filterReason}
+                                        </span>
+                                    )}
+                                </span>
+                                <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                            </a>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </section>
+    );
+}
 
 function formatDate(value: string | null): string {
     if (!value) return "—";
@@ -30,12 +86,6 @@ function formatDate(value: string | null): string {
         dateStyle: "medium",
         timeStyle: "short",
     }).format(new Date(value));
-}
-
-function formatDuration(startedAt: string, completedAt: string | null): string {
-    const end = completedAt ? new Date(completedAt).getTime() : Date.now();
-    const seconds = Math.max(0, Math.round((end - new Date(startedAt).getTime()) / 1000));
-    return `${seconds}s`;
 }
 
 function statusLabel(status: YouTubeIntegrationPublicStatus["sync"]["status"]): string {
@@ -330,23 +380,32 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled, settings 
                         <ChevronDown className={`h-4 w-4 transition-transform ${showDetails ? "rotate-180" : ""}`} />
                     </button>
                     {showDetails && (
-                        <dl className="grid grid-cols-2 gap-3 border-t border-zinc-800 p-3 text-xs text-zinc-500 sm:grid-cols-3">
-                            <div><dt>Trigger</dt><dd className="text-zinc-300">{progress.trigger}</dd></div>
-                            <div><dt>Started</dt><dd className="text-zinc-300">{formatDate(progress.startedAt)}</dd></div>
-                            <div><dt>Completed</dt><dd className="text-zinc-300">{formatDate(progress.completedAt)}</dd></div>
-                            <div><dt>Duration</dt><dd className="text-zinc-300">{formatDuration(progress.startedAt, progress.completedAt)}</dd></div>
-                            <div><dt>Channels</dt><dd className="text-zinc-300">{progress.channelsProcessed}/{progress.channelsTotal}</dd></div>
-                            <div><dt>Discovered</dt><dd className="text-zinc-300">{progress.discovered}</dd></div>
-                            <div><dt>Catalogued</dt><dd className="text-zinc-300">{progress.catalogued}</dd></div>
-                            <div><dt>Remote items</dt><dd className="text-zinc-300">{progress.remoteItems}</dd></div>
-                            <div><dt>Added / removed</dt><dd className="text-zinc-300">{progress.added} / {progress.removed}</dd></div>
-                            <div><dt>Pending add / remove</dt><dd className="text-zinc-300">{progress.pendingAdds} / {progress.pendingRemovals}</dd></div>
-                            <div><dt>Manual remote items</dt><dd className="text-zinc-300">{progress.adopted}</dd></div>
-                            <div><dt>Skipped watched</dt><dd className="text-zinc-300">{progress.skippedWatched}</dd></div>
-                            <div><dt>Skipped filtered</dt><dd className="text-zinc-300">{progress.skippedFiltered}</dd></div>
-                            <div><dt>Skipped existing</dt><dd className="text-zinc-300">{progress.skippedExisting}</dd></div>
-                            <div><dt>Quota this run</dt><dd className="text-zinc-300">{progress.quotaReadUnits + progress.quotaWriteUnits}</dd></div>
-                        </dl>
+                        <div className="border-t border-zinc-800 p-3">
+                            {!progress.videoDetailsAvailable ? (
+                                <p className="rounded-lg bg-zinc-950/30 px-3 py-4 text-xs text-zinc-500">
+                                    Video details were not recorded for this sync.
+                                </p>
+                            ) : (
+                                <div className="grid gap-3 lg:grid-cols-3">
+                                    <SyncVideoList
+                                        title="Added videos"
+                                        emptyLabel="No videos were added."
+                                        videos={progress.addedVideos}
+                                    />
+                                    <SyncVideoList
+                                        title="Removed videos"
+                                        emptyLabel="No videos were removed."
+                                        videos={progress.removedVideos}
+                                    />
+                                    <SyncVideoList
+                                        title="Filtered videos"
+                                        emptyLabel="No videos were filtered."
+                                        videos={progress.filteredVideos}
+                                        showFilterReason
+                                    />
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             )}

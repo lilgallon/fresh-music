@@ -1,7 +1,13 @@
 import "server-only";
 
 import { getDb } from "./db";
-import type { YouTubeSyncPhase, YouTubeSyncTrigger } from "@/types/youtube-integration";
+import type {
+    YouTubeSyncPhase,
+    YouTubeSyncTrigger,
+    YouTubeSyncVideo,
+} from "@/types/youtube-integration";
+
+export type SyncRunVideoAction = "added" | "removed" | "filtered";
 
 export interface SyncRunProgress {
     id: number;
@@ -25,6 +31,10 @@ export interface SyncRunProgress {
     skippedExisting: number;
     quotaReadUnits: number;
     quotaWriteUnits: number;
+    videoDetailsAvailable: boolean;
+    addedVideos: YouTubeSyncVideo[];
+    removedVideos: YouTubeSyncVideo[];
+    filteredVideos: YouTubeSyncVideo[];
     error: string | null;
 }
 
@@ -50,10 +60,45 @@ interface SyncRunRow {
     skipped_existing: number;
     quota_read_units: number;
     quota_write_units: number;
+    video_details_version: number;
     error: string | null;
 }
 
+interface SyncRunVideoRow {
+    video_id: string;
+    action: SyncRunVideoAction;
+    title: string | null;
+    channel_title: string | null;
+    filter_reason: string | null;
+}
+
+function listSyncRunVideos(runId: number): Record<SyncRunVideoAction, YouTubeSyncVideo[]> {
+    const grouped: Record<SyncRunVideoAction, YouTubeSyncVideo[]> = {
+        added: [],
+        removed: [],
+        filtered: [],
+    };
+    const rows = getDb().prepare<[number], SyncRunVideoRow>(
+        `SELECT run_videos.video_id, run_videos.action, run_videos.filter_reason,
+                videos.title, videos.channel_title
+         FROM youtube_sync_run_videos AS run_videos
+         LEFT JOIN videos ON videos.video_id = run_videos.video_id
+         WHERE run_videos.run_id = ?
+         ORDER BY run_videos.rowid ASC`
+    ).all(runId);
+    for (const row of rows) {
+        grouped[row.action].push({
+            id: row.video_id,
+            title: row.title || "Unavailable video",
+            channelTitle: row.channel_title ?? "",
+            filterReason: row.filter_reason,
+        });
+    }
+    return grouped;
+}
+
 function mapRun(row: SyncRunRow): SyncRunProgress {
+    const videos = listSyncRunVideos(row.id);
     return {
         id: row.id,
         trigger: row.trigger,
@@ -76,16 +121,44 @@ function mapRun(row: SyncRunRow): SyncRunProgress {
         skippedExisting: row.skipped_existing,
         quotaReadUnits: row.quota_read_units,
         quotaWriteUnits: row.quota_write_units,
+        videoDetailsAvailable: row.video_details_version >= 1,
+        addedVideos: videos.added,
+        removedVideos: videos.removed,
+        filteredVideos: videos.filtered,
         error: row.error,
     };
 }
 
 export function startSyncRun(trigger: YouTubeSyncTrigger, channelsTotal: number): number {
     const result = getDb().prepare(
-        `INSERT INTO youtube_sync_runs (trigger, status, phase, started_at, channels_total)
-         VALUES (?, 'running', 'queued', ?, ?)`
+        `INSERT INTO youtube_sync_runs (
+            trigger, status, phase, started_at, channels_total, video_details_version
+         ) VALUES (?, 'running', 'queued', ?, ?, 1)`
     ).run(trigger, Date.now(), channelsTotal);
     return Number(result.lastInsertRowid);
+}
+
+export function recordSyncRunVideos(
+    runId: number,
+    action: SyncRunVideoAction,
+    videos: readonly (string | { videoId: string; filterReason?: string })[]
+): void {
+    const statement = getDb().prepare(
+        `INSERT INTO youtube_sync_run_videos (run_id, video_id, action, filter_reason)
+         VALUES (@runId, @videoId, @action, @filterReason)
+         ON CONFLICT(run_id, action, video_id) DO UPDATE SET
+            filter_reason = COALESCE(excluded.filter_reason, filter_reason)`
+    );
+    getDb().transaction(() => {
+        for (const video of videos) {
+            statement.run({
+                runId,
+                action,
+                videoId: typeof video === "string" ? video : video.videoId,
+                filterReason: typeof video === "string" ? null : video.filterReason ?? null,
+            });
+        }
+    })();
 }
 
 export function updateSyncRun(id: number, values: Partial<Omit<SyncRunProgress, "id" | "trigger" | "startedAt">>): void {

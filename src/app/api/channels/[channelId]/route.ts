@@ -18,6 +18,8 @@ export async function POST(
         thumbnail: typeof body.thumbnail === "string" ? body.thumbnail : undefined,
         description: typeof body.description === "string" ? body.description : undefined,
     });
+    const { requestYouTubeSync } = await import("@/lib/youtube-sync-manager");
+    requestYouTubeSync("manual", true);
     return new NextResponse(null, { status: 204 });
 }
 
@@ -26,5 +28,7 @@ export async function DELETE(
     { params }: { params: { channelId: string } }
 ) {
     deleteChannel(params.channelId);
+    const { requestYouTubeSync } = await import("@/lib/youtube-sync-manager");
+    requestYouTubeSync("manual", true);
     return new NextResponse(null, { status: 204 });
 }

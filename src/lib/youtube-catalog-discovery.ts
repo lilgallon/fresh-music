@@ -5,6 +5,7 @@ import {
     isLegacyHistoryEnriched,
     listCatalogIdsNeedingMetadataRefresh,
     listChannelDiscoveryStates,
+    listCatalogFilterReasons,
     listWatchedIdsMissingCatalog,
     markLegacyHistoryEnriched,
     upsertCatalogVideos,
@@ -165,6 +166,7 @@ async function enrichLegacyHistory(runId?: number): Promise<number> {
 export interface CatalogDiscoveryResult {
     discovered: number;
     catalogued: number;
+    filteredVideos: Array<{ videoId: string; filterReason: string }>;
 }
 
 export async function discoverYouTubeCatalog(runId?: number): Promise<CatalogDiscoveryResult> {
@@ -256,10 +258,13 @@ export async function discoverYouTubeCatalog(runId?: number): Promise<CatalogDis
     const staleIds = listCatalogIdsNeedingMetadataRefresh(settings)
         .filter((videoId) => !newIds.has(videoId));
     catalogued += await enrichIds(staleIds, runId);
+    const evaluatedIds = [...uniqueIds, ...staleIds];
+    const filteredVideos = Array.from(listCatalogFilterReasons(evaluatedIds, settings))
+        .map(([videoId, filterReason]) => ({ videoId, filterReason }));
     for (const update of channelUpdates) {
         updateChannelDiscoveryState(update.channelId, update.uploadsPlaylistId, update.newestVideoId);
     }
-    return { discovered: uniqueIds.length, catalogued };
+    return { discovered: uniqueIds.length, catalogued, filteredVideos };
 }
 
 export interface ChannelSearchResult {

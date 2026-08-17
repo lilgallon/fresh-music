@@ -119,7 +119,16 @@ CREATE TABLE IF NOT EXISTS youtube_sync_runs (
   skipped_existing       INTEGER NOT NULL DEFAULT 0,
   quota_read_units       INTEGER NOT NULL DEFAULT 0,
   quota_write_units      INTEGER NOT NULL DEFAULT 0,
+  video_details_version INTEGER NOT NULL DEFAULT 0,
   error                  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS youtube_sync_run_videos (
+  run_id    INTEGER NOT NULL REFERENCES youtube_sync_runs(id) ON DELETE CASCADE,
+  video_id  TEXT NOT NULL,
+  action    TEXT NOT NULL CHECK (action IN ('added', 'removed', 'filtered')),
+  filter_reason TEXT,
+  PRIMARY KEY (run_id, action, video_id)
 );
 `;
 
@@ -128,30 +137,54 @@ function hasColumn(db: Database.Database, table: string, column: string): boolea
     return rows.some((row) => row.name === column);
 }
 
-function migrate(db: Database.Database): void {
+export function migrateDatabase(db: Database.Database): void {
     const version = db.pragma("user_version", { simple: true }) as number;
-    if (version >= 2) return;
+    if (version >= 4) return;
 
     db.transaction(() => {
-        if (!hasColumn(db, "channels", "uploads_playlist_id")) {
-            db.exec("ALTER TABLE channels ADD COLUMN uploads_playlist_id TEXT");
-        }
-        if (!hasColumn(db, "channels", "last_discovered_video_id")) {
-            db.exec("ALTER TABLE channels ADD COLUMN last_discovered_video_id TEXT");
-        }
-        if (!hasColumn(db, "channels", "last_discovery_at")) {
-            db.exec("ALTER TABLE channels ADD COLUMN last_discovery_at INTEGER");
+        if (version < 2) {
+            if (!hasColumn(db, "channels", "uploads_playlist_id")) {
+                db.exec("ALTER TABLE channels ADD COLUMN uploads_playlist_id TEXT");
+            }
+            if (!hasColumn(db, "channels", "last_discovered_video_id")) {
+                db.exec("ALTER TABLE channels ADD COLUMN last_discovered_video_id TEXT");
+            }
+            if (!hasColumn(db, "channels", "last_discovery_at")) {
+                db.exec("ALTER TABLE channels ADD COLUMN last_discovery_at INTEGER");
+            }
+
+            const interval = Number(process.env.PLAYLIST_SYNC_INTERVAL_MINUTES ?? 60);
+            const seededInterval = Number.isFinite(interval)
+                ? Math.min(1440, Math.max(5, Math.round(interval)))
+                : 60;
+            db.prepare(
+                `INSERT OR IGNORE INTO app_settings (key, value, updated_at)
+                 VALUES ('sync_interval_minutes', ?, unixepoch())`
+            ).run(String(seededInterval));
         }
 
-        const interval = Number(process.env.PLAYLIST_SYNC_INTERVAL_MINUTES ?? 60);
-        const seededInterval = Number.isFinite(interval)
-            ? Math.min(1440, Math.max(5, Math.round(interval)))
-            : 60;
-        db.prepare(
-            `INSERT OR IGNORE INTO app_settings (key, value, updated_at)
-             VALUES ('sync_interval_minutes', ?, unixepoch())`
-        ).run(String(seededInterval));
-        db.pragma("user_version = 2");
+        if (version < 3) {
+            if (!hasColumn(db, "youtube_sync_runs", "video_details_version")) {
+                db.exec(
+                    "ALTER TABLE youtube_sync_runs ADD COLUMN video_details_version INTEGER NOT NULL DEFAULT 0"
+                );
+            }
+            db.exec(
+                `CREATE TABLE IF NOT EXISTS youtube_sync_run_videos (
+                    run_id INTEGER NOT NULL REFERENCES youtube_sync_runs(id) ON DELETE CASCADE,
+                    video_id TEXT NOT NULL,
+                    action TEXT NOT NULL CHECK (action IN ('added', 'removed', 'filtered')),
+                    filter_reason TEXT,
+                    PRIMARY KEY (run_id, action, video_id)
+                )`
+            );
+        }
+
+        if (version < 4 && !hasColumn(db, "youtube_sync_run_videos", "filter_reason")) {
+            db.exec("ALTER TABLE youtube_sync_run_videos ADD COLUMN filter_reason TEXT");
+        }
+
+        db.pragma("user_version = 4");
     })();
 }
 
@@ -167,7 +200,7 @@ export function getDb(): Database.Database {
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     db.exec(SCHEMA);
-    migrate(db);
+    migrateDatabase(db);
 
     instance = db;
     return db;

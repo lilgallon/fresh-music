@@ -29,6 +29,7 @@ interface CatalogRow {
     is_short: number | null;
     availability_status: "available" | "unavailable";
     watched_at: number | null;
+    is_followed_channel: number;
 }
 
 function rowToVideo(row: CatalogRow): YouTubeVideo {
@@ -129,16 +130,31 @@ export function listCatalogIdsNeedingMetadataRefresh(settings: AppSettings): str
     ).all(cutoffIso, staleBefore).map((row) => row.video_id);
 }
 
-export function isCatalogEligible(video: YouTubeVideo, settings: AppSettings): boolean {
-    if (video.unavailable || video.isShort) return false;
-    if (video.liveStatus === "live" || video.liveStatus === "upcoming") return false;
+export function getCatalogContentFilterReason(
+    video: YouTubeVideo,
+    settings: AppSettings
+): string | null {
+    if (video.unavailable) return "Video is unavailable";
+    if (video.isShort) return "YouTube Short";
+    if (video.liveStatus === "live") return "Live broadcast";
+    if (video.liveStatus === "upcoming") return "Upcoming broadcast";
     if (video.durationSeconds != null && settings.minimumDurationSeconds != null
-        && video.durationSeconds < settings.minimumDurationSeconds) return false;
+        && video.durationSeconds < settings.minimumDurationSeconds) {
+        return `Shorter than ${settings.minimumDurationSeconds} seconds`;
+    }
     if (video.durationSeconds != null && settings.maximumDurationSeconds != null
-        && video.durationSeconds > settings.maximumDurationSeconds) return false;
+        && video.durationSeconds > settings.maximumDurationSeconds) {
+        return `Longer than ${settings.maximumDurationSeconds} seconds`;
+    }
     const title = video.title.toLocaleLowerCase();
-    if (settings.excludedTitleTerms.some((term) => title.includes(term.toLocaleLowerCase()))) return false;
-    return true;
+    const excludedTerm = settings.excludedTitleTerms.find((term) =>
+        title.includes(term.toLocaleLowerCase())
+    );
+    return excludedTerm ? `Title contains “${excludedTerm}”` : null;
+}
+
+export function isCatalogEligible(video: YouTubeVideo, settings: AppSettings): boolean {
+    return getCatalogContentFilterReason(video, settings) == null;
 }
 
 function listRows(): CatalogRow[] {
@@ -146,7 +162,10 @@ function listRows(): CatalogRow[] {
         `SELECT videos.video_id, videos.channel_id, videos.title, videos.channel_title,
                 videos.thumbnail_url, videos.published_at, videos.duration_seconds,
                 videos.live_status, videos.is_short, videos.availability_status,
-                watched_videos.watched_at
+                watched_videos.watched_at,
+                EXISTS (
+                    SELECT 1 FROM channels WHERE channels.channel_id = videos.channel_id
+                ) AS is_followed_channel
          FROM videos
          LEFT JOIN watched_videos ON watched_videos.video_id = videos.video_id`
     ).all();
@@ -155,26 +174,35 @@ function listRows(): CatalogRow[] {
 export function listEligibleUnwatchedCatalogVideos(settings: AppSettings): YouTubeVideo[] {
     const cutoff = Date.now() - settings.videoLookbackDays * 24 * 60 * 60 * 1000;
     return listRows()
-        .filter((row) => row.watched_at == null)
+        .filter((row) => row.watched_at == null && row.is_followed_channel === 1)
         .map(rowToVideo)
         .filter((video) => new Date(video.publishedAt).getTime() >= cutoff)
         .filter((video) => isCatalogEligible(video, settings))
         .sort((left, right) => left.publishedAt.localeCompare(right.publishedAt));
 }
 
-export function listIneligibleCatalogVideoIds(videoIds: string[], settings: AppSettings): Set<string> {
-    if (videoIds.length === 0) return new Set();
+export function listCatalogFilterReasons(
+    videoIds: string[],
+    settings: AppSettings
+): Map<string, string> {
+    if (videoIds.length === 0) return new Map();
     const requested = new Set(videoIds);
     const cutoff = Date.now() - settings.videoLookbackDays * 24 * 60 * 60 * 1000;
-    return new Set(
-        listRows()
-            .map(rowToVideo)
-            .filter((video) => requested.has(video.id) && (
-                new Date(video.publishedAt).getTime() < cutoff
-                || !isCatalogEligible(video, settings)
-            ))
-            .map((video) => video.id)
-    );
+    const reasons = new Map<string, string>();
+    for (const row of listRows().filter((candidate) => requested.has(candidate.video_id))) {
+        const video = rowToVideo(row);
+        const reason = row.channel_id != null && row.is_followed_channel !== 1
+            ? "Channel is no longer followed"
+            : new Date(video.publishedAt).getTime() < cutoff
+                ? "Outside the configured video window"
+                : getCatalogContentFilterReason(video, settings);
+        if (reason) reasons.set(video.id, reason);
+    }
+    return reasons;
+}
+
+export function listIneligibleCatalogVideoIds(videoIds: string[], settings: AppSettings): Set<string> {
+    return new Set(listCatalogFilterReasons(videoIds, settings).keys());
 }
 
 export function listCatalogVideos(
@@ -185,6 +213,7 @@ export function listCatalogVideos(
 ): { videos: YouTubeVideo[]; nextCursor: string | null } {
     const cutoff = Date.now() - settings.videoLookbackDays * 24 * 60 * 60 * 1000;
     const all = listRows()
+        .filter((row) => tab === "history" || row.is_followed_channel === 1)
         .map(rowToVideo)
         .filter((video) => tab === "history"
             ? video.watchedAt != null

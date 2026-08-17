@@ -4,8 +4,8 @@ import { YouTubeChannel, YouTubeVideo } from "@/types/youtube";
 import type { YouTubeContentFilterRules } from "./youtube-content-filter";
 import {
     isApplicationInitialized,
+    listCatalogFilterReasons,
     listEligibleUnwatchedCatalogVideos,
-    listIneligibleCatalogVideoIds,
 } from "./catalog-repository";
 import {
     canUseYouTubeRead,
@@ -112,6 +112,11 @@ export interface DiscoveredYouTubeVideo extends YouTubeVideo {
     sourceChannelId: string;
 }
 
+export interface FilteredYouTubeVideo {
+    videoId: string;
+    reason: string;
+}
+
 export interface YouTubeGateway {
     getMyAccount(accessToken: string): Promise<YouTubeAccount>;
     getPlaylist(accessToken: string, playlistId: string): Promise<YouTubePlaylist | null>;
@@ -120,11 +125,11 @@ export interface YouTubeGateway {
     listPlaylistItems(accessToken: string, playlistId: string): Promise<YouTubeRemotePlaylistItem[]>;
     insertPlaylistItem(accessToken: string, playlistId: string, videoId: string): Promise<string>;
     deletePlaylistItem(accessToken: string, playlistItemId: string): Promise<void>;
-    findIgnoredVideoIds(
+    findIgnoredVideos(
         accessToken: string,
         videoIds: string[],
         rules?: YouTubeContentFilterRules
-    ): Promise<Set<string>>;
+    ): Promise<FilteredYouTubeVideo[]>;
     discoverVideos(
         accessToken: string,
         channels: Array<Pick<YouTubeChannel, "channelId">>,
@@ -283,13 +288,13 @@ export const youtubeGateway: YouTubeGateway = {
         );
     },
 
-    async findIgnoredVideoIds(_accessToken, videoIds, rules) {
-        return listIneligibleCatalogVideoIds(videoIds, {
+    async findIgnoredVideos(_accessToken, videoIds, rules) {
+        return Array.from(listCatalogFilterReasons(videoIds, {
             ...getSettings(),
             excludedTitleTerms: rules?.excludedTitleTerms ?? [],
             minimumDurationSeconds: rules?.minimumDurationSeconds ?? null,
             maximumDurationSeconds: rules?.maximumDurationSeconds ?? null,
-        });
+        })).map(([videoId, reason]) => ({ videoId, reason }));
     },
 
     async discoverVideos() {

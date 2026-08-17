@@ -55,6 +55,11 @@ export interface PlaylistSyncDependencies {
     now(): number;
     intervalMs: number;
     onProgress?: (phase: YouTubeSyncPhase, values?: Record<string, number>) => void;
+    onVideoChange?: (
+        action: "added" | "removed" | "filtered",
+        videoId: string,
+        filterReason?: string
+    ) => void;
 }
 
 export class PlaylistSyncConfigurationError extends Error {
@@ -157,6 +162,7 @@ async function deletePendingEntry(
         }
     }
     dependencies.store.markEntryRemoved(entry.videoId, reason);
+    if (remote) dependencies.onVideoChange?.("removed", entry.videoId);
     return Boolean(remote);
 }
 
@@ -192,6 +198,7 @@ async function insertPreparedEntry(
             sourceChannelId: entry.sourceChannelId,
             publishedAt: entry.publishedAt,
         });
+        dependencies.onVideoChange?.("added", entry.videoId);
         remoteItems.push({ id: playlistItemId, videoId: entry.videoId });
         return true;
     } catch (error) {
@@ -250,14 +257,22 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
             const filterCandidates = entries.filter((entry) =>
                 entry.managedByApp && (entry.state === "active" || entry.state === "adding")
             );
-            const ignoredVideoIds = await dependencies.youtube.findIgnoredVideoIds(
+            const ignoredVideos = await dependencies.youtube.findIgnoredVideos(
                 accessToken,
                 filterCandidates.map((entry) => entry.videoId),
                 settings
             );
+            const ignoredReasons = new Map(
+                ignoredVideos.map((video) => [video.videoId, video.reason])
+            );
             for (const entry of filterCandidates.filter((candidate) =>
-                ignoredVideoIds.has(candidate.videoId)
+                ignoredReasons.has(candidate.videoId)
             )) {
+                dependencies.onVideoChange?.(
+                    "filtered",
+                    entry.videoId,
+                    ignoredReasons.get(entry.videoId)
+                );
                 skippedFiltered += 1;
                 if (entry.state === "adding") {
                     const remote = remoteItems.find((item) => item.videoId === entry.videoId);
@@ -311,6 +326,7 @@ export function createPlaylistSyncRunner(dependencies: PlaylistSyncDependencies)
                 if (!remote) {
                     dependencies.store.markWatched(entry.videoId);
                     dependencies.store.markEntryRemoved(entry.videoId, "external");
+                    dependencies.onVideoChange?.("removed", entry.videoId);
                     removed += 1;
                 } else if (remote.id !== entry.playlistItemId) {
                     dependencies.store.activateEntry({

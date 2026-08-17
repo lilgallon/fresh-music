@@ -40,7 +40,12 @@ const store = {
 let runningSync: Promise<YouTubeSyncResult> | null = null;
 
 export function synchronizeYouTubePlaylist(
-    onProgress?: (phase: YouTubeSyncPhase, values?: Record<string, number>) => void
+    onProgress?: (phase: YouTubeSyncPhase, values?: Record<string, number>) => void,
+    onVideoChange?: (
+        action: "added" | "removed" | "filtered",
+        videoId: string,
+        filterReason?: string
+    ) => void
 ): Promise<YouTubeSyncResult> {
     if (runningSync) return runningSync;
     const runner = createPlaylistSyncRunner({
@@ -50,6 +55,7 @@ export function synchronizeYouTubePlaylist(
         now: Date.now,
         intervalMs: getPlaylistSyncIntervalMs(),
         onProgress,
+        onVideoChange,
     });
     runningSync = runner().finally(() => {
         runningSync = null;

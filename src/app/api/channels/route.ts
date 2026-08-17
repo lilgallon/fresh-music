@@ -19,5 +19,7 @@ export async function PUT(req: NextRequest) {
         }
     }
     replaceChannels(body as YouTubeChannel[]);
+    const { requestYouTubeSync } = await import("@/lib/youtube-sync-manager");
+    requestYouTubeSync("manual", true);
     return NextResponse.json(listChannels());
 }

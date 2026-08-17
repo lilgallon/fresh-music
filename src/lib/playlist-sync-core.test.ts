@@ -173,8 +173,10 @@ class FakeYouTubeGateway implements YouTubeGateway {
         this.deleted.push(playlistItemId);
         this.remoteItems = this.remoteItems.filter((item) => item.id !== playlistItemId);
     }
-    async findIgnoredVideoIds(_accessToken: string, videoIds: string[]) {
-        return new Set(videoIds.filter((id) => this.ignoredVideoIds.has(id)));
+    async findIgnoredVideos(_accessToken: string, videoIds: string[]) {
+        return videoIds
+            .filter((id) => this.ignoredVideoIds.has(id))
+            .map((videoId) => ({ videoId, reason: "YouTube Short" }));
     }
     async discoverVideos() {
         return this.discovered
@@ -183,7 +185,15 @@ class FakeYouTubeGateway implements YouTubeGateway {
     }
 }
 
-function runner(store: MemoryStore, youtube: FakeYouTubeGateway) {
+function runner(
+    store: MemoryStore,
+    youtube: FakeYouTubeGateway,
+    onVideoChange?: (
+        action: "added" | "removed" | "filtered",
+        videoId: string,
+        filterReason?: string
+    ) => void
+) {
     return createPlaylistSyncRunner({
         store,
         youtube,
@@ -192,6 +202,7 @@ function runner(store: MemoryStore, youtube: FakeYouTubeGateway) {
             .mockReturnValueOnce(1_000)
             .mockReturnValueOnce(2_000),
         intervalMs: 60_000,
+        onVideoChange,
     });
 }
 
@@ -211,6 +222,37 @@ describe("playlist synchronization", () => {
         expect(youtube.insertOrder).toEqual(["oldest", "newest"]);
         expect(result).toEqual({ added: 2, removed: 0, discovered: 3 });
         expect(store.finished.at(-1)).toMatchObject({ status: "success", added: 2 });
+    });
+
+    it("reports successful additions, removals, and filters by video", async () => {
+        const store = new MemoryStore();
+        const youtube = new FakeYouTubeGateway();
+        const changes: Array<[string, string, string | undefined]> = [];
+        youtube.ignoredVideoIds.add("filtered");
+        youtube.remoteItems = [{ id: "filtered-item", videoId: "filtered" }];
+        youtube.discovered = [video("added", "2026-08-02T00:00:00Z")];
+        store.entries.set("filtered", {
+            videoId: "filtered",
+            sourceChannelId: "channel",
+            publishedAt: "2026-08-01T00:00:00Z",
+            playlistItemId: "filtered-item",
+            state: "active",
+            managedByApp: true,
+            removalReason: null,
+            lastError: null,
+        });
+
+        await runner(
+            store,
+            youtube,
+            (action, videoId, reason) => changes.push([action, videoId, reason])
+        )();
+
+        expect(changes).toEqual([
+            ["filtered", "filtered", "YouTube Short"],
+            ["removed", "filtered", undefined],
+            ["added", "added", undefined],
+        ]);
     });
 
     it("rechecks watched state before every insertion", async () => {
@@ -249,10 +291,11 @@ describe("playlist synchronization", () => {
     it("does not duplicate or take ownership of a manually added item", async () => {
         const store = new MemoryStore();
         const youtube = new FakeYouTubeGateway();
+        const changes: Array<[string, string]> = [];
         youtube.remoteItems = [{ id: "manual-item", videoId: "release" }];
         youtube.discovered = [video("release", "2026-08-01T00:00:00Z")];
 
-        await runner(store, youtube)();
+        await runner(store, youtube, (action, videoId) => changes.push([action, videoId]))();
 
         expect(youtube.insertOrder).toEqual([]);
         expect(store.entries.get("release")).toMatchObject({
@@ -262,14 +305,16 @@ describe("playlist synchronization", () => {
         });
 
         youtube.remoteItems = [];
-        await runner(store, youtube)();
+        await runner(store, youtube, (action, videoId) => changes.push([action, videoId]))();
         expect(store.watched.has("release")).toBe(false);
         expect(youtube.insertOrder).toEqual([]);
+        expect(changes).toEqual([]);
     });
 
     it("marks a managed item watched when it was removed in YouTube", async () => {
         const store = new MemoryStore();
         const youtube = new FakeYouTubeGateway();
+        const changes: Array<[string, string]> = [];
         store.entries.set("removed", {
             videoId: "removed",
             sourceChannelId: "channel",
@@ -281,11 +326,16 @@ describe("playlist synchronization", () => {
             lastError: null,
         });
 
-        const result = await runner(store, youtube)();
+        const result = await runner(
+            store,
+            youtube,
+            (action, videoId) => changes.push([action, videoId])
+        )();
 
         expect(store.watched.has("removed")).toBe(true);
         expect(store.entries.get("removed")).toMatchObject({ state: "removed", removalReason: "external" });
         expect(result.removed).toBe(1);
+        expect(changes).toEqual([["removed", "removed"]]);
     });
 
     it("does not adopt a manual duplicate when the managed playlist item was removed", async () => {
@@ -380,12 +430,18 @@ describe("playlist synchronization", () => {
             lastError: null,
         });
         youtube.deleteError = new Error("quota exceeded");
+        const changes: Array<[string, string]> = [];
 
-        await expect(runner(store, youtube)()).rejects.toThrow("quota exceeded");
+        await expect(runner(
+            store,
+            youtube,
+            (action, videoId) => changes.push([action, videoId])
+        )()).rejects.toThrow("quota exceeded");
         expect(store.entries.get("pending")).toMatchObject({
             state: "removal_pending",
             lastError: "quota exceeded",
         });
+        expect(changes).toEqual([]);
 
         youtube.deleteError = null;
         await runner(store, youtube)();

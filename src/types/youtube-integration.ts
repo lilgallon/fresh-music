@@ -21,6 +21,13 @@ export type YouTubeSyncPhase =
 
 export type YouTubeSyncTrigger = "manual" | "scheduled" | "bootstrap" | "oauth" | "startup";
 
+export interface YouTubeSyncVideo {
+    id: string;
+    title: string;
+    channelTitle: string;
+    filterReason: string | null;
+}
+
 export interface YouTubeSyncProgress {
     id: number;
     trigger: YouTubeSyncTrigger;
@@ -43,6 +50,10 @@ export interface YouTubeSyncProgress {
     skippedExisting: number;
     quotaReadUnits: number;
     quotaWriteUnits: number;
+    videoDetailsAvailable: boolean;
+    addedVideos: YouTubeSyncVideo[];
+    removedVideos: YouTubeSyncVideo[];
+    filteredVideos: YouTubeSyncVideo[];
     error: string | null;
 }
 

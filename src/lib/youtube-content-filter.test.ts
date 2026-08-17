@@ -67,6 +67,7 @@ describe("YouTube content filtering", () => {
             metadata("accepted", { durationSeconds: 180 }),
         ], {
             excludedTitleTerms: ["teaser"],
+            excludedTitleRegexEnabled: false,
             minimumDurationSeconds: 30,
             maximumDurationSeconds: 600,
         }, checkShort);
@@ -74,6 +75,40 @@ describe("YouTube content filtering", () => {
         expect(Array.from(ignored)).toEqual(["teaser", "too-short", "too-long"]);
         expect(checkShort).toHaveBeenCalledOnce();
         expect(checkShort).toHaveBeenCalledWith("accepted");
+    });
+
+    it("applies one case-insensitive regular expression to titles", async () => {
+        const checkShort = vi.fn().mockResolvedValue(false);
+
+        const ignored = await findIgnoredYouTubeVideoIds([
+            metadata("official", { title: "ARTIST - OFFICIAL AUDIO", durationSeconds: 240 }),
+            metadata("live", { title: "Artist - Live Session", durationSeconds: 240 }),
+            metadata("accepted", { title: "Artist - Album Track", durationSeconds: 240 }),
+        ], {
+            excludedTitleTerms: ["(official audio|live session)$"],
+            excludedTitleRegexEnabled: true,
+            minimumDurationSeconds: null,
+            maximumDurationSeconds: null,
+        }, checkShort);
+
+        expect(Array.from(ignored)).toEqual(["official", "live"]);
+        expect(checkShort).not.toHaveBeenCalled();
+    });
+
+    it("fails open when manually stored regex syntax is invalid", async () => {
+        const checkShort = vi.fn().mockResolvedValue(false);
+
+        const ignored = await findIgnoredYouTubeVideoIds([
+            metadata("accepted", { title: "Keep this video", durationSeconds: 240 }),
+        ], {
+            excludedTitleTerms: ["["],
+            excludedTitleRegexEnabled: true,
+            minimumDurationSeconds: null,
+            maximumDurationSeconds: null,
+        }, checkShort);
+
+        expect(Array.from(ignored)).toEqual([]);
+        expect(checkShort).not.toHaveBeenCalled();
     });
 
     it("bypasses the EU consent redirect when checking the Shorts route", async () => {

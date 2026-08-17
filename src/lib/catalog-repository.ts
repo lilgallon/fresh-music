@@ -3,6 +3,7 @@ import "server-only";
 import { getDb } from "./db";
 import type { AppSettings } from "@/types/settings";
 import type { YouTubeVideo } from "@/types/youtube";
+import { getVideoTitleFilterMatch } from "./video-title-filter";
 
 export interface CatalogVideoInput {
     id: string;
@@ -146,11 +147,11 @@ export function getCatalogContentFilterReason(
         && video.durationSeconds > settings.maximumDurationSeconds) {
         return `Longer than ${settings.maximumDurationSeconds} seconds`;
     }
-    const title = video.title.toLocaleLowerCase();
-    const excludedTerm = settings.excludedTitleTerms.find((term) =>
-        title.includes(term.toLocaleLowerCase())
-    );
-    return excludedTerm ? `Title contains “${excludedTerm}”` : null;
+    const titleMatch = getVideoTitleFilterMatch(video.title, settings);
+    if (!titleMatch) return null;
+    return titleMatch.isRegex
+        ? `Title matches regular expression “${titleMatch.value}”`
+        : `Title contains “${titleMatch.value}”`;
 }
 
 export function isCatalogEligible(video: YouTubeVideo, settings: AppSettings): boolean {

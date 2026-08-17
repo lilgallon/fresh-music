@@ -1,4 +1,5 @@
 import type { AppSettings } from "@/types/settings";
+import { getVideoTitleRegexError } from "./video-title-filter";
 
 function integerInRange(value: unknown, minimum: number, maximum: number): boolean {
     return typeof value === "number"
@@ -59,6 +60,21 @@ export function validateAppSettings(settings: AppSettings): string[] {
     if (!Array.isArray(settings.excludedTitleTerms)
         || settings.excludedTitleTerms.some((term) => typeof term !== "string")) {
         errors.push("Ignored title fragments must be a list of text values.");
+    }
+    if (typeof settings.excludedTitleRegexEnabled !== "boolean") {
+        errors.push("Regular expression title filtering must be enabled or disabled.");
+    } else if (settings.excludedTitleRegexEnabled && Array.isArray(settings.excludedTitleTerms)) {
+        if (settings.excludedTitleTerms.length > 1) {
+            errors.push("The regular expression title filter must contain a single pattern.");
+        } else {
+            const pattern = settings.excludedTitleTerms[0] ?? "";
+            if (pattern.length > 100) {
+                errors.push("The ignored title regular expression must not exceed 100 characters.");
+            } else {
+                const regexError = getVideoTitleRegexError(pattern);
+                if (regexError) errors.push(regexError);
+            }
+        }
     }
     return errors;
 }

@@ -25,4 +25,18 @@ describe("validateAppSettings", () => {
             maximumDurationSeconds: 60,
         })).toContain("Maximum duration cannot be shorter than minimum duration.");
     });
+
+    it("rejects invalid or ambiguous regular expression filters", () => {
+        expect(validateAppSettings({
+            ...DEFAULT_SETTINGS,
+            excludedTitleTerms: ["["],
+            excludedTitleRegexEnabled: true,
+        })).toContain("The ignored title regular expression is invalid.");
+
+        expect(validateAppSettings({
+            ...DEFAULT_SETTINGS,
+            excludedTitleTerms: ["live", "teaser"],
+            excludedTitleRegexEnabled: true,
+        })).toContain("The regular expression title filter must contain a single pattern.");
+    });
 });

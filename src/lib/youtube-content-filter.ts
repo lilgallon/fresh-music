@@ -1,3 +1,5 @@
+import { getVideoTitleFilterMatch } from "./video-title-filter";
+
 export const MAX_SHORT_DURATION_SECONDS = 180;
 
 export interface YouTubeVideoMetadata {
@@ -10,12 +12,14 @@ export interface YouTubeVideoMetadata {
 
 export interface YouTubeContentFilterRules {
     excludedTitleTerms: string[];
+    excludedTitleRegexEnabled: boolean;
     minimumDurationSeconds: number | null;
     maximumDurationSeconds: number | null;
 }
 
 export const DEFAULT_CONTENT_FILTER_RULES: YouTubeContentFilterRules = {
     excludedTitleTerms: [],
+    excludedTitleRegexEnabled: false,
     minimumDurationSeconds: null,
     maximumDurationSeconds: null,
 };
@@ -39,6 +43,7 @@ export function normalizeContentFilterRules(value: unknown): YouTubeContentFilte
                 .filter(Boolean)
                 .slice(0, 50)
             : [],
+        excludedTitleRegexEnabled: candidate.excludedTitleRegexEnabled === true,
         minimumDurationSeconds: normalizeDuration(candidate.minimumDurationSeconds),
         maximumDurationSeconds: normalizeDuration(candidate.maximumDurationSeconds),
     };
@@ -81,16 +86,13 @@ export async function findIgnoredYouTubeVideoIds(
     checkShort: (videoId: string) => Promise<boolean> = isYouTubeShort
 ): Promise<Set<string>> {
     const normalizedRules = normalizeContentFilterRules(rules);
-    const excludedTitleTerms = normalizedRules.excludedTitleTerms
-        .map((term) => term.trim().toLocaleLowerCase())
-        .filter(Boolean);
     const ignored = new Set(
         metadata
             .filter((video) =>
                 video.liveBroadcastContent === "live"
                 || video.liveBroadcastContent === "upcoming"
                 || video.hasLiveStreamingDetails
-                || excludedTitleTerms.some((term) => video.title.toLocaleLowerCase().includes(term))
+                || getVideoTitleFilterMatch(video.title, normalizedRules) != null
                 || (
                     video.durationSeconds != null
                     && normalizedRules.minimumDurationSeconds != null

@@ -42,8 +42,13 @@ export default function ChannelSettings({
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<SearchResultChannel[]>([]);
     const [isSearching, setIsSearching] = useState(false);
-    const [excludedTitleTerms, setExcludedTitleTerms] = useState(
-        settings.excludedTitleTerms.join(", ")
+    const [excludedTitleFilter, setExcludedTitleFilter] = useState(
+        settings.excludedTitleRegexEnabled
+            ? settings.excludedTitleTerms[0] ?? ""
+            : settings.excludedTitleTerms.join(", ")
+    );
+    const [excludedTitleRegexEnabled, setExcludedTitleRegexEnabled] = useState(
+        settings.excludedTitleRegexEnabled
     );
     const [minimumDuration, setMinimumDuration] = useState(
         settings.minimumDurationSeconds?.toString() ?? ""
@@ -58,7 +63,10 @@ export default function ChannelSettings({
     const [settingsSaveError, setSettingsSaveError] = useState<string | null>(null);
 
     useEffect(() => {
-        setExcludedTitleTerms(settings.excludedTitleTerms.join(", "));
+        setExcludedTitleFilter(settings.excludedTitleRegexEnabled
+            ? settings.excludedTitleTerms[0] ?? ""
+            : settings.excludedTitleTerms.join(", "));
+        setExcludedTitleRegexEnabled(settings.excludedTitleRegexEnabled);
         setMinimumDuration(settings.minimumDurationSeconds?.toString() ?? "");
         setMaximumDuration(settings.maximumDurationSeconds?.toString() ?? "");
         setSyncDraft(settings);
@@ -160,10 +168,13 @@ export default function ChannelSettings({
         try {
             const candidate = {
                 ...settings,
-                excludedTitleTerms: excludedTitleTerms
-                    .split(",")
-                    .map((term) => term.trim())
-                    .filter(Boolean),
+                excludedTitleTerms: excludedTitleRegexEnabled
+                    ? excludedTitleFilter.trim() ? [excludedTitleFilter.trim()] : []
+                    : excludedTitleFilter
+                        .split(",")
+                        .map((term) => term.trim())
+                        .filter(Boolean),
+                excludedTitleRegexEnabled,
                 minimumDurationSeconds: minimumDuration === "" ? null : Number(minimumDuration),
                 maximumDurationSeconds: maximumDuration === "" ? null : Number(maximumDuration),
             };
@@ -320,17 +331,41 @@ export default function ChannelSettings({
                                 title matching is case-insensitive.
                             </p>
                             <div>
-                                <SettingLabel htmlFor="excluded-title-terms" label="Ignore titles containing"
-                                    help="Case-insensitive fragments. A video containing any fragment is excluded from new releases and the playlist." />
+                                <SettingLabel
+                                    htmlFor="excluded-title-terms"
+                                    label={excludedTitleRegexEnabled ? "Ignore titles matching" : "Ignore titles containing"}
+                                    help={excludedTitleRegexEnabled
+                                        ? "One case-insensitive regular expression. Enter the pattern without slash delimiters or flags."
+                                        : "Case-insensitive fragments. A video containing any fragment is excluded from new releases and the playlist."}
+                                />
                                 <input
                                     id="excluded-title-terms"
                                     type="text"
-                                    value={excludedTitleTerms}
-                                    onChange={(event) => setExcludedTitleTerms(event.target.value)}
-                                    placeholder="teaser, trailer, interview"
+                                    maxLength={100}
+                                    value={excludedTitleFilter}
+                                    onChange={(event) => setExcludedTitleFilter(event.target.value)}
+                                    placeholder={excludedTitleRegexEnabled
+                                        ? "^(?!.*live).*(official|audio)$"
+                                        : "teaser, trailer, interview"}
                                     className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
                                 />
-                                <p className="mt-1 text-xs text-zinc-600">Separate multiple fragments with commas.</p>
+                                <div className="mt-2 flex items-center justify-between gap-4">
+                                    <p className="text-xs text-zinc-600">
+                                        {excludedTitleRegexEnabled
+                                            ? "The entire value is interpreted as one expression."
+                                            : "Separate multiple fragments with commas."}
+                                    </p>
+                                    <label htmlFor="excluded-title-regex" className="flex shrink-0 items-center gap-2 text-xs text-zinc-400">
+                                        <input
+                                            id="excluded-title-regex"
+                                            type="checkbox"
+                                            checked={excludedTitleRegexEnabled}
+                                            onChange={(event) => setExcludedTitleRegexEnabled(event.target.checked)}
+                                            className="h-4 w-4 accent-red-600"
+                                        />
+                                        Regex
+                                    </label>
+                                </div>
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div>

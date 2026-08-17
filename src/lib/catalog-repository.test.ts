@@ -23,11 +23,11 @@ import { DEFAULT_SETTINGS } from "../types/settings";
 
 const now = new Date().toISOString();
 
-function addCatalogVideo(id: string, channelId: string): void {
+function addCatalogVideo(id: string, channelId: string, title = `Video ${id}`): void {
     upsertCatalogVideos([{
         id,
         channelId,
-        title: `Video ${id}`,
+        title,
         channelTitle: `Channel ${channelId}`,
         thumbnail: "",
         publishedAt: now,
@@ -104,6 +104,23 @@ describe("catalogue channel scope", () => {
             ["video-a", "Channel is no longer followed"],
             ["video-b", "Shorter than 300 seconds"],
         ]));
+    });
+
+    it("uses the same global regex semantics for catalogue eligibility", () => {
+        addChannel("channel-a");
+        addCatalogVideo("video-a", "channel-a", "Artist - OFFICIAL AUDIO");
+        addCatalogVideo("video-b", "channel-a", "Artist - Album Track");
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            excludedTitleTerms: ["(official audio|live session)$"],
+            excludedTitleRegexEnabled: true,
+        };
+
+        expect(listCatalogFilterReasons(["video-a", "video-b"], settings)).toEqual(new Map([
+            ["video-a", "Title matches regular expression “(official audio|live session)$”"],
+        ]));
+        expect(listEligibleUnwatchedCatalogVideos(settings).map((video) => video.id))
+            .toEqual(["video-b"]);
     });
 });
 

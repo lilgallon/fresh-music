@@ -324,6 +324,7 @@ export const youtubeGateway: YouTubeGateway = {
         return Array.from(listCatalogFilterReasons(videoIds, {
             ...getSettings(),
             excludedTitleTerms: rules?.excludedTitleTerms ?? [],
+            excludedTitleRegexEnabled: rules?.excludedTitleRegexEnabled ?? false,
             minimumDurationSeconds: rules?.minimumDurationSeconds ?? null,
             maximumDurationSeconds: rules?.maximumDurationSeconds ?? null,
         })).map(([videoId, reason]) => ({ videoId, reason }));

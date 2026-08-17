@@ -226,6 +226,9 @@ export function getSettings(): AppSettings {
             values.get("video_lookback_days") ?? DEFAULT_SETTINGS.videoLookbackDays
         ),
         excludedTitleTerms: normalizeTitleTerms(excludedTitleTerms),
+        excludedTitleRegexEnabled: normalizeBoolean(
+            values.get("excluded_title_regex_enabled"), DEFAULT_SETTINGS.excludedTitleRegexEnabled
+        ),
         minimumDurationSeconds: normalizeOptionalDuration(values.get("minimum_duration_seconds")),
         maximumDurationSeconds: normalizeOptionalDuration(values.get("maximum_duration_seconds")),
         automaticSyncEnabled: normalizeBoolean(
@@ -271,6 +274,9 @@ export function saveSettings(settings: Partial<AppSettings>): AppSettings {
     };
     next.videoLookbackDays = normalizeVideoLookbackDays(next.videoLookbackDays);
     next.excludedTitleTerms = normalizeTitleTerms(next.excludedTitleTerms);
+    next.excludedTitleRegexEnabled = normalizeBoolean(
+        next.excludedTitleRegexEnabled, DEFAULT_SETTINGS.excludedTitleRegexEnabled
+    );
     next.minimumDurationSeconds = normalizeOptionalDuration(next.minimumDurationSeconds);
     next.maximumDurationSeconds = normalizeOptionalDuration(next.maximumDurationSeconds);
     next.automaticSyncEnabled = normalizeBoolean(
@@ -307,6 +313,7 @@ export function saveSettings(settings: Partial<AppSettings>): AppSettings {
     db.transaction(() => {
         upsert.run("video_lookback_days", String(next.videoLookbackDays));
         upsert.run("excluded_title_terms", JSON.stringify(next.excludedTitleTerms));
+        upsert.run("excluded_title_regex_enabled", String(next.excludedTitleRegexEnabled));
         upsert.run("minimum_duration_seconds", next.minimumDurationSeconds == null
             ? ""
             : String(next.minimumDurationSeconds));

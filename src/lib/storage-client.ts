@@ -44,6 +44,7 @@ export function readSettingsCache(): AppSettings | null {
         excludedTitleTerms: Array.isArray(cached.excludedTitleTerms)
             ? cached.excludedTitleTerms.filter((term): term is string => typeof term === "string")
             : [],
+        excludedTitleRegexEnabled: cached.excludedTitleRegexEnabled === true,
     };
 }
 

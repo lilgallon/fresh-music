@@ -1,6 +1,7 @@
 export interface AppSettings {
     videoLookbackDays: number;
     excludedTitleTerms: string[];
+    excludedTitleRegexEnabled: boolean;
     minimumDurationSeconds: number | null;
     maximumDurationSeconds: number | null;
     automaticSyncEnabled: boolean;
@@ -16,6 +17,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
     videoLookbackDays: 30,
     excludedTitleTerms: [],
+    excludedTitleRegexEnabled: false,
     minimumDurationSeconds: null,
     maximumDurationSeconds: null,
     automaticSyncEnabled: true,

@@ -2,24 +2,60 @@
 
 A minimalist dashboard that tracks music releases from selected YouTube channels and can maintain a private listening queue in YouTube and YouTube Music.
 
-![homepage](.github/assets/homepage.png)
-
-![settings](.github/assets/settings.png)
+![Fresh Music New releases grid](.github/assets/homepage.png)
 
 ## Features
 
 - **Automatic YouTube playlist:** Adds unwatched releases to a private `Fresh Music — Nouveautés` playlist at a configurable interval (hourly by default).
 - **YouTube and YouTube Music:** The playlist is available in both apps. YouTube Music only surfaces videos it recognizes as music.
 - **Two-way queue state:** Marking a video watched in Fresh Music removes it from the playlist. Removing a managed item in YouTube marks it watched at the next sync.
-- **New Releases:** Fetches recent uploads from curated channels and excludes YouTube Shorts plus current, upcoming, and completed live broadcasts.
+- **New Releases:** Fetches recent uploads from curated channels and excludes YouTube Shorts plus current, upcoming, and completed live broadcasts. The grid keeps a quick **Seen** action on every card.
+- **Fast review flow:** Review the loaded New queue with four explicit decisions: **Stop** (`X`), **Later** (`C`), **Seen** (`V`), and **Like** (`B`). YouTube keeps control of the arrow keys.
+- **Undoable actions:** The latest decision can be undone from the top notification for six seconds. A YouTube Like restores the account's previous rating when undone.
 - **Configurable filters:** Optionally ignore case-insensitive title fragments and videos outside a minimum/maximum duration.
 - **Configurable Lookback:** Choose a discovery window from 7 days to 1 year.
 - **Local catalogue:** Discovery metadata, history, integration state, quota diagnostics, and settings are stored in SQLite. Dashboard tabs never query YouTube directly.
-- **Clean Player:** Watch videos in the dashboard with previous/next navigation.
+- **Clean Player:** Review New releases with the decision flow, while History keeps its previous/next navigation.
 
 YouTube does not expose a user's watch history through its official API. Playing a track in YouTube or YouTube Music does not remove it automatically: remove it from the playlist or mark it watched in Fresh Music.
 
 The YouTube Data API exposes reliable live-broadcast metadata but no official `isShort` field. Fresh Music checks the YouTube `/shorts/{videoId}` route for videos up to three minutes long; this HTTP `HEAD` request does not consume Data API quota. Results are cached in SQLite for 30 days and new checks are limited to five concurrent requests. If the best-effort check fails, the video is kept rather than hiding a possible music release.
+
+## Review New releases
+
+Opening any card starts a one-pass session from that video. **Later** moves forward without changing its status, **Seen** removes it from New, and **Like** waits for YouTube confirmation before marking it seen. **Stop**, `Escape`, or the backdrop closes the player.
+
+| Key | Action | Result |
+| --- | --- | --- |
+| `X` | Stop | Close the player without changing the video. |
+| `C` | Later | Continue without marking the video seen; it stays in the grid. |
+| `V` | Seen | Mark the video seen and open the next one. |
+| `B` | Like | Like through the connected YouTube account, mark it seen, and continue. |
+
+Keys and buttons share the same pressed, release, stamp, and card-transition feedback. Shortcuts are active only while Fresh Music owns focus; when the YouTube iframe has focus, its own shortcuts remain available.
+
+![Fresh Music New review modal](.github/assets/new-review.png)
+
+<p align="center">
+  <img src=".github/assets/new-review-mobile.png" alt="Fresh Music New review modal on mobile" width="390">
+</p>
+
+## Settings
+
+The dedicated Settings page centralizes the whole YouTube integration and the local catalogue configuration:
+
+- **Automatic playlist status:** Connected account, direct YouTube and YouTube Music links, last and next synchronization, pending additions/removals, detailed run results, and manual synchronization controls.
+- **Quota monitoring:** Estimated daily usage, the separate playlist-write budget, remaining mutations, reset time, and visible warnings before or after a limit is reached.
+- **Channel management:** Search YouTube, follow new channels, and remove existing subscriptions from the local catalogue.
+- **Content selection:** Case-insensitive excluded title fragments, minimum/maximum duration, and a per-channel discovery window from 7 days to 1 year. Shorts and live broadcasts remain excluded automatically.
+- **Synchronization controls:** Enable scheduling and configure its interval, total/write budgets, per-run addition and removal limits, discovery depth, and Shorts cache duration without restarting Fresh Music.
+- **Portable backup:** Export channels, watched videos, and settings to JSON or restore them from a previous export.
+
+![Fresh Music playlist and quota settings](.github/assets/settings.png)
+
+The advanced controls keep content filters and the video window side by side on desktop, followed by synchronization limits and backup controls.
+
+![Fresh Music advanced synchronization settings](.github/assets/settings-advanced.png)
 
 ## Google Cloud setup
 

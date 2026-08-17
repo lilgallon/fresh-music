@@ -15,6 +15,7 @@ import {
 } from "./youtube-quota";
 import { getSettings } from "./repository";
 import { isYouTubeQuotaExceededError } from "./youtube-quota-error";
+import type { YouTubeRating } from "@/types/youtube-rating";
 
 const BASE_URL = "https://www.googleapis.com/youtube/v3";
 export const FRESH_MUSIC_PLAYLIST_TITLE = "Fresh Music — Nouveautés";
@@ -172,6 +173,37 @@ interface PlaylistItemsResponse {
         contentDetails?: { videoId?: string; videoPublishedAt?: string };
     }>;
 }
+
+interface VideoRatingResponse {
+    items?: Array<{
+        videoId?: string;
+        rating?: "like" | "dislike" | "none" | "unspecified";
+    }>;
+}
+
+export interface YouTubeRatingGateway {
+    getRating(accessToken: string, videoId: string): Promise<YouTubeRating>;
+    setRating(accessToken: string, videoId: string, rating: YouTubeRating): Promise<void>;
+}
+
+export const youtubeRatingGateway: YouTubeRatingGateway = {
+    async getRating(accessToken, videoId) {
+        const data = await authorizedRequest<VideoRatingResponse>(
+            accessToken,
+            `/videos/getRating?id=${encodeURIComponent(videoId)}`
+        );
+        const rating = data.items?.find((item) => item.videoId === videoId)?.rating;
+        return rating === "like" || rating === "dislike" ? rating : "none";
+    },
+
+    async setRating(accessToken, videoId, rating) {
+        await authorizedRequest<void>(
+            accessToken,
+            `/videos/rate?id=${encodeURIComponent(videoId)}&rating=${encodeURIComponent(rating)}`,
+            { method: "POST" }
+        );
+    },
+};
 
 export const youtubeGateway: YouTubeGateway = {
     async getMyAccount(accessToken) {

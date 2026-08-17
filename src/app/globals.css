@@ -36,3 +36,42 @@ body {
     @apply border-border;
   }
 }
+
+@keyframes fresh-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fresh-toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes fresh-video-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.fresh-toast-enter {
+  animation: fresh-toast-enter 220ms cubic-bezier(0.2, 0.85, 0.3, 1) both;
+}
+
+.fresh-toast-progress {
+  animation: fresh-toast-progress 6s linear both;
+}
+
+.fresh-video-card-enter {
+  animation: fresh-video-card-enter 280ms cubic-bezier(0.2, 0.85, 0.3, 1) backwards;
+}

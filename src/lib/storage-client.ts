@@ -2,6 +2,7 @@ import { YouTubeChannel } from "@/types/youtube";
 import { YouTubeVideo } from "@/types/youtube";
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
 import { AppSettings, DEFAULT_SETTINGS } from "@/types/settings";
+import type { YouTubeLikeResult, YouTubeRating } from "@/types/youtube-rating";
 
 export type { AppSettings } from "@/types/settings";
 export { DEFAULT_SETTINGS } from "@/types/settings";
@@ -181,6 +182,30 @@ export async function deleteWatched(videoId: string): Promise<void> {
         method: "DELETE",
     });
     if (!res.ok) throw new Error(`DELETE /api/watched/${videoId} failed: ${res.status}`);
+}
+
+export async function likeYouTubeVideo(videoId: string): Promise<YouTubeLikeResult> {
+    const res = await fetch(`/api/youtube/videos/${encodeURIComponent(videoId)}/like`, {
+        method: "POST",
+    });
+    const body = await res.json().catch(() => ({})) as YouTubeLikeResult & { error?: string };
+    if (!res.ok) throw new Error(body.error ?? `Could not like the YouTube video (${res.status})`);
+    return body;
+}
+
+export async function undoYouTubeVideoLike(
+    videoId: string,
+    previousRating: YouTubeRating
+): Promise<void> {
+    const res = await fetch(`/api/youtube/videos/${encodeURIComponent(videoId)}/like/undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ previousRating }),
+    });
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Could not undo the YouTube like (${res.status})`);
+    }
 }
 
 export async function fetchYouTubeIntegration(): Promise<YouTubeIntegrationPublicStatus> {

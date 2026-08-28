@@ -222,6 +222,72 @@ export function listYouTubePlaylistEntries(): YouTubePlaylistEntry[] {
         .map(mapEntry);
 }
 
+export function countActiveUnmanagedYouTubePlaylistEntries(): number {
+    const row = getDb()
+        .prepare<[], { count: number }>(
+            `SELECT COUNT(*) AS count
+             FROM youtube_playlist_entries
+             WHERE state = 'active' AND managed_by_app = 0`
+        )
+        .get();
+    return row?.count ?? 0;
+}
+
+export function adoptRemoteYouTubePlaylistEntries(
+    remoteItems: Array<{ id: string; videoId: string }>
+): number {
+    const uniqueRemoteItems = Array.from(
+        new Map(remoteItems.map((item) => [item.videoId, item])).values()
+    );
+    const remoteVideoIds = new Set(uniqueRemoteItems.map((item) => item.videoId));
+    const db = getDb();
+    const existingEntryList = listYouTubePlaylistEntries();
+    const existingEntries = new Map(existingEntryList.map((entry) => [entry.videoId, entry]));
+    const markStaleEntryRemoved = db.prepare(
+        `UPDATE youtube_playlist_entries
+         SET playlist_item_id = NULL, state = 'removed', removal_reason = 'external',
+             removed_at = unixepoch(), last_error = NULL, updated_at = unixepoch()
+         WHERE video_id = ? AND state = 'active' AND managed_by_app = 0`
+    );
+    const activateEntry = db.prepare(
+        `INSERT INTO youtube_playlist_entries (
+            video_id, source_channel_id, published_at, playlist_item_id,
+            state, managed_by_app, added_at, updated_at
+         ) VALUES (@videoId, @sourceChannelId, @publishedAt, @playlistItemId,
+                   'active', 1, unixepoch(), unixepoch())
+         ON CONFLICT(video_id) DO UPDATE SET
+            source_channel_id = COALESCE(source_channel_id, excluded.source_channel_id),
+            published_at = COALESCE(published_at, excluded.published_at),
+            playlist_item_id = excluded.playlist_item_id,
+            state = 'active',
+            managed_by_app = 1,
+            removal_reason = NULL,
+            removed_at = NULL,
+            last_error = NULL,
+            added_at = COALESCE(added_at, unixepoch()),
+            updated_at = unixepoch()`
+    );
+
+    db.transaction(() => {
+        for (const entry of existingEntryList) {
+            if (entry.state === "active" && !entry.managedByApp && !remoteVideoIds.has(entry.videoId)) {
+                markStaleEntryRemoved.run(entry.videoId);
+            }
+        }
+        for (const item of uniqueRemoteItems) {
+            const existing = existingEntries.get(item.videoId);
+            activateEntry.run({
+                videoId: item.videoId,
+                playlistItemId: item.id,
+                sourceChannelId: existing?.sourceChannelId ?? null,
+                publishedAt: existing?.publishedAt ?? null,
+            });
+        }
+    })();
+
+    return uniqueRemoteItems.length;
+}
+
 export function getYouTubePlaylistEntry(videoId: string): YouTubePlaylistEntry | null {
     const row = getDb()
         .prepare<[string], PlaylistEntryRow>(

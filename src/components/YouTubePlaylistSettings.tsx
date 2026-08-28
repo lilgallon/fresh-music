@@ -12,6 +12,7 @@ import {
     Youtube,
 } from "lucide-react";
 import {
+    adoptExistingYouTubePlaylist,
     disconnectYouTube,
     fetchYouTubeIntegration,
     recreateYouTubePlaylist,
@@ -25,7 +26,7 @@ import SettingHelpTooltip from "./SettingHelpTooltip";
 import type { AppSettings } from "@/types/settings";
 import YouTubeErrorMessage from "./YouTubeErrorMessage";
 
-type Action = "sync" | "recreate" | "disconnect" | null;
+type Action = "sync" | "recreate" | "adopt" | "disconnect" | null;
 
 function SyncVideoList({
     title,
@@ -276,6 +277,34 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled, settings 
                     </a>
                 </div>
             ) : null}
+
+            {status.playlist && status.playlist.unmanagedVideoCount > 0 && (
+                <div className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-200">
+                    <p className="font-medium">
+                        {status.playlist.unmanagedVideoCount} existing playlist videos are protected from synchronization.
+                    </p>
+                    <p className="mt-1 leading-relaxed text-amber-200/70">
+                        Manage them with Fresh Music to remove videos that are watched, filtered, or outside the current video window.
+                        Any manual additions currently in this playlist will also become managed.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const count = status.playlist?.unmanagedVideoCount ?? 0;
+                            if (window.confirm(
+                                `Manage ${count} existing playlist videos with Fresh Music? Watched or filtered videos may then be removed from YouTube.`
+                            )) {
+                                void runAction("adopt", adoptExistingYouTubePlaylist);
+                            }
+                        }}
+                        disabled={action !== null || running}
+                        className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 font-semibold text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {action === "adopt" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Manage existing videos
+                    </button>
+                </div>
+            )}
 
             <dl className="grid grid-cols-2 gap-3 rounded-lg bg-zinc-950/30 p-3 text-xs sm:grid-cols-4">
                 <div>

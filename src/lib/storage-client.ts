@@ -229,6 +229,13 @@ export async function recreateYouTubePlaylist(): Promise<YouTubeIntegrationPubli
     return body;
 }
 
+export async function adoptExistingYouTubePlaylist(): Promise<YouTubeIntegrationPublicStatus> {
+    const res = await fetch("/api/youtube/playlist/adopt", { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `POST /api/youtube/playlist/adopt failed: ${res.status}`);
+    return body;
+}
+
 export async function disconnectYouTube(): Promise<YouTubeIntegrationPublicStatus> {
     const res = await fetch("/api/youtube/connection", { method: "DELETE" });
     if (!res.ok) throw new Error(`DELETE /api/youtube/connection failed: ${res.status}`);

@@ -3,6 +3,8 @@ import "server-only";
 import { encryptRefreshToken } from "./token-crypto";
 import {
     clearYouTubePlaylist,
+    adoptRemoteYouTubePlaylistEntries,
+    countActiveUnmanagedYouTubePlaylistEntries,
     disconnectYouTube,
     getYouTubeIntegration,
     resetYouTubePlaylistEntries,
@@ -41,6 +43,7 @@ export function getYouTubeIntegrationPublicStatus(): YouTubeIntegrationPublicSta
             title: integration.playlistTitle ?? "Fresh Music — Nouveautés",
             youtubeUrl: `https://www.youtube.com/playlist?list=${encodeURIComponent(integration.playlistId)}`,
             youtubeMusicUrl: `https://music.youtube.com/playlist?list=${encodeURIComponent(integration.playlistId)}`,
+            unmanagedVideoCount: countActiveUnmanagedYouTubePlaylistEntries(),
         }
         : null;
 
@@ -142,6 +145,21 @@ export async function recreateYouTubePlaylist(): Promise<void> {
     saveYouTubePlaylist(resolution.playlist.id, resolution.playlist.title);
     if (resolution.source !== "preferred") resetYouTubePlaylistEntries();
     requestYouTubeSync("manual", true);
+}
+
+export async function adoptExistingYouTubePlaylistEntries(): Promise<number> {
+    const integration = getYouTubeIntegration();
+    if (!integration?.encryptedRefreshToken) throw new Error("No YouTube account is connected");
+    if (!integration.playlistId) throw new Error("No Fresh Music playlist is configured");
+    if (getLatestSyncRun()?.status === "running") {
+        throw new Error("Wait for the current synchronization to finish before managing existing videos");
+    }
+
+    const accessToken = await getYouTubeAccessToken();
+    const remoteItems = await youtubeGateway.listPlaylistItems(accessToken, integration.playlistId);
+    const adopted = adoptRemoteYouTubePlaylistEntries(remoteItems);
+    requestYouTubeSync("manual", true);
+    return adopted;
 }
 
 export async function recoverExistingYouTubePlaylist(): Promise<boolean> {

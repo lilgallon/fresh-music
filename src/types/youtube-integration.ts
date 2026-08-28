@@ -69,6 +69,7 @@ export interface YouTubeIntegrationPublicStatus {
         title: string;
         youtubeUrl: string;
         youtubeMusicUrl: string;
+        unmanagedVideoCount: number;
     } | null;
     sync: {
         status: YouTubeSyncStatus;

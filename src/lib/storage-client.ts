@@ -3,6 +3,10 @@ import { YouTubeVideo } from "@/types/youtube";
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
 import { AppSettings, DEFAULT_SETTINGS } from "@/types/settings";
 import type { YouTubeLikeResult, YouTubeRating } from "@/types/youtube-rating";
+import type {
+    ChannelStatisticsResponse,
+    YouTubeRatingSyncResult,
+} from "@/types/channel-statistics";
 
 export type { AppSettings } from "@/types/settings";
 export { DEFAULT_SETTINGS } from "@/types/settings";
@@ -101,6 +105,23 @@ export async function fetchCatalogVideos(
     const res = await fetch(`/api/videos?tab=${tab}&limit=${limit}${cursorParam}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`GET /api/videos failed: ${res.status}`);
     return res.json();
+}
+
+export async function fetchChannelStatistics(): Promise<ChannelStatisticsResponse> {
+    const res = await fetch("/api/statistics/channels", { cache: "no-store" });
+    if (!res.ok) throw new Error(`GET /api/statistics/channels failed: ${res.status}`);
+    return res.json();
+}
+
+export async function syncYouTubeRatings(force = false): Promise<YouTubeRatingSyncResult> {
+    const res = await fetch("/api/youtube/ratings/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+    });
+    const body = await res.json().catch(() => ({})) as YouTubeRatingSyncResult & { error?: string };
+    if (!res.ok) throw new Error(body.error ?? `Could not synchronize YouTube ratings (${res.status})`);
+    return body;
 }
 
 export interface SearchResultChannel {

@@ -15,6 +15,7 @@ A minimalist dashboard that tracks music releases from selected YouTube channels
 - **Configurable filters:** Optionally ignore case-insensitive title fragments and videos outside a minimum/maximum duration.
 - **Configurable Lookback:** Choose a discovery window from 7 days to 1 year.
 - **Local catalogue:** Discovery metadata, history, integration state, quota diagnostics, and settings are stored in SQLite. Dashboard tabs never query YouTube directly.
+- **Channel statistics:** Compare watched tracks, YouTube likes, and like percentage across current and former channels. Ratings refresh daily and can be synchronized manually.
 - **Clean Player:** Review New releases with the decision flow, while History keeps its previous/next navigation.
 
 YouTube does not expose a user's watch history through its official API. Playing a track in YouTube or YouTube Music does not remove it automatically: remove it from the playlist or mark it watched in Fresh Music.

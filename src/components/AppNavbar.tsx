@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { History, Music2, PlayCircle, Settings2 } from "lucide-react";
+import { BarChart3, History, Music2, PlayCircle, Settings2 } from "lucide-react";
 
-type AppSection = "new" | "history" | "settings";
+type AppSection = "new" | "history" | "statistics" | "settings";
 
 interface AppNavbarProps {
     activeSection: AppSection;
@@ -62,6 +62,17 @@ export default function AppNavbar({ activeSection, onSelectTab, newCount }: AppN
         );
     };
 
+    const renderStatistics = (mobile = false) => (
+        <Link
+            href="/statistics"
+            className={tabClass(activeSection === "statistics", mobile)}
+            aria-current={activeSection === "statistics" ? "page" : undefined}
+        >
+            <BarChart3 className="h-4 w-4" />
+            <span>Stats</span>
+        </Link>
+    );
+
     return (
         <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
             <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8">
@@ -76,6 +87,7 @@ export default function AppNavbar({ activeSection, onSelectTab, newCount }: AppN
                     <nav className="hidden space-x-1 rounded-lg bg-zinc-900/50 p-1 sm:flex" aria-label="Main navigation">
                         {renderTab("new")}
                         {renderTab("history")}
+                        {renderStatistics()}
                     </nav>
 
                     <Link
@@ -96,6 +108,7 @@ export default function AppNavbar({ activeSection, onSelectTab, newCount }: AppN
                 <nav className="flex w-full space-x-1 rounded-lg bg-zinc-900/50 p-1" aria-label="Main navigation">
                     {renderTab("new", true)}
                     {renderTab("history", true)}
+                    {renderStatistics(true)}
                 </nav>
             </div>
         </header>

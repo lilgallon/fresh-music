@@ -183,17 +183,30 @@ interface VideoRatingResponse {
 
 export interface YouTubeRatingGateway {
     getRating(accessToken: string, videoId: string): Promise<YouTubeRating>;
+    getRatings(accessToken: string, videoIds: string[]): Promise<Map<string, YouTubeRating>>;
     setRating(accessToken: string, videoId: string, rating: YouTubeRating): Promise<void>;
 }
 
 export const youtubeRatingGateway: YouTubeRatingGateway = {
     async getRating(accessToken, videoId) {
+        return (await this.getRatings(accessToken, [videoId])).get(videoId) ?? "none";
+    },
+
+    async getRatings(accessToken, videoIds) {
+        if (videoIds.length === 0) return new Map();
         const data = await authorizedRequest<VideoRatingResponse>(
             accessToken,
-            `/videos/getRating?id=${encodeURIComponent(videoId)}`
+            `/videos/getRating?id=${encodeURIComponent(videoIds.join(","))}`
         );
-        const rating = data.items?.find((item) => item.videoId === videoId)?.rating;
-        return rating === "like" || rating === "dislike" ? rating : "none";
+        const ratings = new Map<string, YouTubeRating>();
+        for (const item of data.items ?? []) {
+            if (!item.videoId) continue;
+            ratings.set(
+                item.videoId,
+                item.rating === "like" || item.rating === "dislike" ? item.rating : "none"
+            );
+        }
+        return ratings;
     },
 
     async setRating(accessToken, videoId, rating) {

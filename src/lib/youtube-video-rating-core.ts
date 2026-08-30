@@ -6,6 +6,7 @@ export interface YouTubeVideoRatingDependencies {
     setRating(accessToken: string, videoId: string, rating: YouTubeRating): Promise<void>;
     markWatched(videoId: string): void;
     unmarkWatched(videoId: string): void;
+    saveRating(videoId: string, rating: YouTubeRating): void;
     removeFromPlaylist(videoId: string): Promise<void>;
     requeueInPlaylist(videoId: string): Promise<void>;
 }
@@ -25,6 +26,7 @@ export function createYouTubeVideoRatingActions(dependencies: YouTubeVideoRating
                 dependencies.markWatched(videoId);
                 watchedWasMarked = true;
                 await dependencies.removeFromPlaylist(videoId);
+                dependencies.saveRating(videoId, "like");
             } catch (error) {
                 if (watchedWasMarked) {
                     dependencies.unmarkWatched(videoId);
@@ -33,6 +35,7 @@ export function createYouTubeVideoRatingActions(dependencies: YouTubeVideoRating
                 if (ratingChanged) {
                     await dependencies.setRating(accessToken, videoId, previousRating);
                 }
+                dependencies.saveRating(videoId, previousRating);
                 throw error;
             }
 
@@ -52,6 +55,7 @@ export function createYouTubeVideoRatingActions(dependencies: YouTubeVideoRating
                 dependencies.unmarkWatched(videoId);
                 watchedWasUnmarked = true;
                 await dependencies.requeueInPlaylist(videoId);
+                dependencies.saveRating(videoId, previousRating);
             } catch (error) {
                 if (watchedWasUnmarked) {
                     dependencies.markWatched(videoId);
@@ -60,6 +64,7 @@ export function createYouTubeVideoRatingActions(dependencies: YouTubeVideoRating
                 if (ratingChanged) {
                     await dependencies.setRating(accessToken, videoId, "like");
                 }
+                dependencies.saveRating(videoId, "like");
                 throw error;
             }
         },

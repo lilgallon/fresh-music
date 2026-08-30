@@ -20,6 +20,22 @@ CREATE TABLE IF NOT EXISTS watched_videos (
   watched_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
+CREATE TABLE IF NOT EXISTS youtube_video_ratings (
+  youtube_account_id TEXT NOT NULL,
+  video_id           TEXT NOT NULL,
+  rating             TEXT NOT NULL CHECK (rating IN ('like', 'dislike', 'none')),
+  checked_at         INTEGER NOT NULL,
+  PRIMARY KEY (youtube_account_id, video_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_youtube_video_ratings_account_rating
+  ON youtube_video_ratings (youtube_account_id, rating);
+
+CREATE TABLE IF NOT EXISTS youtube_rating_sync_state (
+  youtube_account_id TEXT PRIMARY KEY,
+  last_full_sync_at  INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,
@@ -139,7 +155,7 @@ function hasColumn(db: Database.Database, table: string, column: string): boolea
 
 export function migrateDatabase(db: Database.Database): void {
     const version = db.pragma("user_version", { simple: true }) as number;
-    if (version >= 4) return;
+    if (version >= 5) return;
 
     db.transaction(() => {
         if (version < 2) {
@@ -184,7 +200,25 @@ export function migrateDatabase(db: Database.Database): void {
             db.exec("ALTER TABLE youtube_sync_run_videos ADD COLUMN filter_reason TEXT");
         }
 
-        db.pragma("user_version = 4");
+        if (version < 5) {
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS youtube_video_ratings (
+                    youtube_account_id TEXT NOT NULL,
+                    video_id TEXT NOT NULL,
+                    rating TEXT NOT NULL CHECK (rating IN ('like', 'dislike', 'none')),
+                    checked_at INTEGER NOT NULL,
+                    PRIMARY KEY (youtube_account_id, video_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_youtube_video_ratings_account_rating
+                    ON youtube_video_ratings (youtube_account_id, rating);
+                CREATE TABLE IF NOT EXISTS youtube_rating_sync_state (
+                    youtube_account_id TEXT PRIMARY KEY,
+                    last_full_sync_at INTEGER
+                );
+            `);
+        }
+
+        db.pragma("user_version = 5");
     })();
 }
 

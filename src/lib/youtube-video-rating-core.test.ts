@@ -12,6 +12,7 @@ function dependencies(previousRating: YouTubeRating = "none") {
         setRating: vi.fn().mockResolvedValue(undefined),
         markWatched: vi.fn(),
         unmarkWatched: vi.fn(),
+        saveRating: vi.fn(),
         removeFromPlaylist: vi.fn().mockResolvedValue(undefined),
         requeueInPlaylist: vi.fn().mockResolvedValue(undefined),
     } satisfies YouTubeVideoRatingDependencies;
@@ -40,6 +41,7 @@ describe("YouTube video rating actions", () => {
         expect(deps.setRating).toHaveBeenCalledWith("token", "video", "like");
         expect(deps.markWatched).toHaveBeenCalledWith("video");
         expect(deps.removeFromPlaylist).toHaveBeenCalledWith("video");
+        expect(deps.saveRating).toHaveBeenCalledWith("video", "like");
         expect(deps.setRating.mock.invocationCallOrder[0]).toBeLessThan(
             deps.markWatched.mock.invocationCallOrder[0]
         );
@@ -75,6 +77,7 @@ describe("YouTube video rating actions", () => {
         expect(deps.unmarkWatched).toHaveBeenCalledWith("video");
         expect(deps.requeueInPlaylist).toHaveBeenCalledWith("video");
         expect(deps.setRating).toHaveBeenLastCalledWith("token", "video", "dislike");
+        expect(deps.saveRating).toHaveBeenLastCalledWith("video", "dislike");
     });
 
     it("restores a previous dislike before unmarking watched", async () => {
@@ -86,6 +89,7 @@ describe("YouTube video rating actions", () => {
         expect(deps.setRating).toHaveBeenCalledWith("token", "video", "dislike");
         expect(deps.unmarkWatched).toHaveBeenCalledWith("video");
         expect(deps.requeueInPlaylist).toHaveBeenCalledWith("video");
+        expect(deps.saveRating).toHaveBeenCalledWith("video", "dislike");
         expect(deps.setRating.mock.invocationCallOrder[0]).toBeLessThan(
             deps.unmarkWatched.mock.invocationCallOrder[0]
         );

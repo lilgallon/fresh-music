@@ -38,7 +38,7 @@ describe("database migrations", () => {
 
         migrateDatabase(db);
 
-        expect(db.pragma("user_version", { simple: true })).toBe(4);
+        expect(db.pragma("user_version", { simple: true })).toBe(5);
         expect(db.prepare(
             "SELECT id, added, removed, video_details_version FROM youtube_sync_runs"
         ).get()).toEqual({ id: 1, added: 2, removed: 1, video_details_version: 0 });
@@ -47,6 +47,12 @@ describe("database migrations", () => {
         ).get()).toEqual({ name: "youtube_sync_run_videos" });
         expect(db.prepare("PRAGMA table_info(youtube_sync_run_videos)").all())
             .toEqual(expect.arrayContaining([expect.objectContaining({ name: "filter_reason" })]));
+        expect(db.prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'youtube_video_ratings'"
+        ).get()).toEqual({ name: "youtube_video_ratings" });
+        expect(db.prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'youtube_rating_sync_state'"
+        ).get()).toEqual({ name: "youtube_rating_sync_state" });
 
         db.close();
     });

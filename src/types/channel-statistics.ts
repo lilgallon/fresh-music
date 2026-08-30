@@ -1,6 +1,7 @@
 export interface ChannelStatistic {
     channelId: string;
     name: string;
+    thumbnail: string | null;
     followed: boolean;
     watchedCount: number;
     likedCount: number;
@@ -11,6 +12,8 @@ export interface ChannelStatistic {
 export interface ChannelStatisticsResponse {
     channels: ChannelStatistic[];
     unattributedWatchedCount: number;
+    pendingIdentificationCount: number;
+    unidentifiedWatchedCount: number;
     ratings: {
         accountChannelId: string | null;
         connected: boolean;

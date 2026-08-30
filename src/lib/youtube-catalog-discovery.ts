@@ -2,7 +2,6 @@ import "server-only";
 
 import {
     ensureUnavailableCatalogVideos,
-    isLegacyHistoryEnriched,
     listCatalogIdsNeedingMetadataRefresh,
     listChannelDiscoveryStates,
     listCatalogFilterReasons,
@@ -151,7 +150,6 @@ async function enrichIds(
 }
 
 async function enrichLegacyHistory(runId?: number): Promise<number> {
-    if (isLegacyHistoryEnriched()) return 0;
     if (runId) updateSyncRun(runId, { phase: "enriching_history" });
     let total = 0;
     while (true) {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
     AlertTriangle,
     ArrowDown,
@@ -177,8 +178,11 @@ export default function StatisticsPage() {
                     <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-zinc-500">
                         <span>{statistics.channels.length} chaînes</span>
                         <span>Dernière synchronisation des likes : {formatLastSync(statistics.ratings.lastFullSyncAt)}</span>
-                        {statistics.unattributedWatchedCount > 0 && (
-                            <span>{statistics.unattributedWatchedCount} vues en attente d’identification</span>
+                        {statistics.pendingIdentificationCount > 0 && (
+                            <span>{statistics.pendingIdentificationCount} vues en attente d’identification</span>
+                        )}
+                        {statistics.unidentifiedWatchedCount > 0 && (
+                            <span>{statistics.unidentifiedWatchedCount} vues sans chaîne identifiable</span>
                         )}
                     </div>
                 )}
@@ -213,8 +217,16 @@ export default function StatisticsPage() {
                                         <tr key={channel.channelId} className="transition-colors hover:bg-zinc-900/80">
                                             <th scope="row" className="px-4 py-4 font-normal">
                                                 <div className="flex min-w-0 items-center gap-3">
-                                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-sm font-bold text-zinc-300">
-                                                        {channel.name.charAt(0).toLocaleUpperCase()}
+                                                    <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-800 text-sm font-bold text-zinc-300">
+                                                        {channel.thumbnail ? (
+                                                            <Image
+                                                                src={channel.thumbnail}
+                                                                alt=""
+                                                                fill
+                                                                sizes="36px"
+                                                                className="object-cover"
+                                                            />
+                                                        ) : channel.name.charAt(0).toLocaleUpperCase()}
                                                     </span>
                                                     <div className="min-w-0">
                                                         <p className="truncate font-medium text-white">{channel.name}</p>

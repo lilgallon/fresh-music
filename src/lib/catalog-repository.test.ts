@@ -11,6 +11,8 @@ import {
     listCatalogFilterReasons,
     listEligibleUnwatchedCatalogVideos,
     listIneligibleCatalogVideoIds,
+    listWatchedIdsMissingCatalog,
+    markLegacyHistoryEnriched,
     upsertCatalogVideos,
 } from "./catalog-repository";
 import {
@@ -89,6 +91,19 @@ describe("catalogue channel scope", () => {
 
         expect(listCatalogVideos("history", DEFAULT_SETTINGS, 50, 0).videos.map((video) => video.id))
             .toEqual(["video-a"]);
+    });
+
+    it("keeps watched placeholders imported after legacy enrichment eligible for metadata", () => {
+        markLegacyHistoryEnriched();
+        getDb().prepare("INSERT INTO watched_videos (video_id) VALUES (?)").run("late-import");
+        getDb().prepare(
+            `INSERT INTO videos (
+                video_id, title, channel_title, thumbnail_url, availability_status,
+                discovered_at, metadata_checked_at, updated_at
+             ) VALUES (?, 'Video pending metadata', '', '', 'unavailable', unixepoch(), NULL, unixepoch())`
+        ).run("late-import");
+
+        expect(listWatchedIdsMissingCatalog()).toContain("late-import");
     });
 
     it("excludes removed channels from playlist candidates and marks their entries filtered", () => {

@@ -15,6 +15,7 @@ import type {
 interface StatisticRow {
     channel_id: string;
     name: string;
+    thumbnail: string | null;
     followed: number;
     watched_count: number;
     liked_count: number;
@@ -24,11 +25,12 @@ interface StatisticRow {
 export function listChannelStatistics(youtubeAccountId: string | null): ChannelStatistic[] {
     const rows = getDb().prepare<[string | null], StatisticRow>(
         `WITH known_channels AS (
-            SELECT channel_id, name, 1 AS followed
+            SELECT channel_id, name, thumbnail, 1 AS followed
             FROM channels
             UNION ALL
             SELECT videos.channel_id,
                    COALESCE(MAX(NULLIF(videos.channel_title, '')), videos.channel_id) AS name,
+                   NULL AS thumbnail,
                    0 AS followed
             FROM videos
             WHERE videos.channel_id IS NOT NULL
@@ -39,6 +41,7 @@ export function listChannelStatistics(youtubeAccountId: string | null): ChannelS
          )
          SELECT known_channels.channel_id,
                 known_channels.name,
+                known_channels.thumbnail,
                 known_channels.followed,
                 COUNT(DISTINCT watched_videos.video_id) AS watched_count,
                 COUNT(DISTINCT CASE
@@ -55,7 +58,8 @@ export function listChannelStatistics(youtubeAccountId: string | null): ChannelS
          LEFT JOIN youtube_video_ratings
            ON youtube_video_ratings.youtube_account_id = ?
           AND youtube_video_ratings.video_id = videos.video_id
-         GROUP BY known_channels.channel_id, known_channels.name, known_channels.followed`
+         GROUP BY known_channels.channel_id, known_channels.name,
+                  known_channels.thumbnail, known_channels.followed`
     ).all(youtubeAccountId);
 
     return rows.map((row) => {
@@ -63,6 +67,7 @@ export function listChannelStatistics(youtubeAccountId: string | null): ChannelS
         return {
             channelId: row.channel_id,
             name: row.name,
+            thumbnail: row.thumbnail,
             followed: row.followed === 1,
             watchedCount: row.watched_count,
             likedCount: row.liked_count,
@@ -83,16 +88,31 @@ export function getChannelStatisticsResponse(now = Date.now()): ChannelStatistic
     const hasUncheckedWatchedVideos = accountChannelId
         ? listUncheckedWatchedVideoIds(accountChannelId).length > 0
         : false;
-    const unattributedWatchedCount = getDb().prepare<[], { count: number }>(
-        `SELECT COUNT(*) AS count
+    const identificationCounts = getDb().prepare<[], {
+        pending_count: number;
+        unidentified_count: number;
+    }>(
+        `SELECT
+            SUM(CASE
+                WHEN videos.channel_id IS NULL
+                 AND (videos.video_id IS NULL OR videos.metadata_checked_at IS NULL)
+                THEN 1 ELSE 0 END) AS pending_count,
+            SUM(CASE
+                WHEN videos.channel_id IS NULL
+                 AND videos.video_id IS NOT NULL
+                 AND videos.metadata_checked_at IS NOT NULL
+                THEN 1 ELSE 0 END) AS unidentified_count
          FROM watched_videos
-         LEFT JOIN videos ON videos.video_id = watched_videos.video_id
-         WHERE videos.channel_id IS NULL`
-    ).get()?.count ?? 0;
+         LEFT JOIN videos ON videos.video_id = watched_videos.video_id`
+    ).get() ?? { pending_count: 0, unidentified_count: 0 };
+    const pendingIdentificationCount = identificationCounts.pending_count ?? 0;
+    const unidentifiedWatchedCount = identificationCounts.unidentified_count ?? 0;
 
     return {
         channels: listChannelStatistics(accountChannelId),
-        unattributedWatchedCount,
+        unattributedWatchedCount: pendingIdentificationCount + unidentifiedWatchedCount,
+        pendingIdentificationCount,
+        unidentifiedWatchedCount,
         ratings: {
             accountChannelId,
             connected: Boolean(integration?.encryptedRefreshToken),

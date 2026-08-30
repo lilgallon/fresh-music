@@ -6,12 +6,12 @@ vi.hoisted(() => {
 vi.mock("server-only", () => ({}));
 
 import { getDb } from "./db";
-import { listChannelStatistics } from "./channel-statistics";
+import { getChannelStatisticsResponse, listChannelStatistics } from "./channel-statistics";
 
-function addChannel(channelId: string, name: string): void {
+function addChannel(channelId: string, name: string, thumbnail: string | null = null): void {
     getDb().prepare(
-        "INSERT INTO channels (channel_id, name, is_music_only) VALUES (?, ?, 1)"
-    ).run(channelId, name);
+        "INSERT INTO channels (channel_id, name, is_music_only, thumbnail) VALUES (?, ?, 1, ?)"
+    ).run(channelId, name, thumbnail);
 }
 
 function addVideo(videoId: string, channelId: string | null, channelTitle: string): void {
@@ -45,7 +45,7 @@ describe("channel statistics", () => {
     });
 
     it("includes followed channels without views and removed channels from history", () => {
-        addChannel("followed", "Followed");
+        addChannel("followed", "Followed", "https://yt3.ggpht.com/followed.jpg");
         addVideo("old-video", "removed", "Removed");
         markWatched("old-video");
         saveRating("account-a", "old-video", "like");
@@ -54,6 +54,7 @@ describe("channel statistics", () => {
             {
                 channelId: "followed",
                 name: "Followed",
+                thumbnail: "https://yt3.ggpht.com/followed.jpg",
                 followed: true,
                 watchedCount: 0,
                 likedCount: 0,
@@ -63,6 +64,7 @@ describe("channel statistics", () => {
             {
                 channelId: "removed",
                 name: "Removed",
+                thumbnail: null,
                 followed: false,
                 watchedCount: 1,
                 likedCount: 1,
@@ -113,5 +115,21 @@ describe("channel statistics", () => {
         addVideo("unknown", null, "");
         markWatched("unknown");
         expect(listChannelStatistics("account-a")).toEqual([]);
+    });
+
+    it("distinguishes pending metadata from videos that remain unidentifiable", () => {
+        addVideo("pending", null, "");
+        addVideo("unidentified", null, "");
+        markWatched("pending");
+        markWatched("unidentified");
+        getDb().prepare(
+            "UPDATE videos SET metadata_checked_at = unixepoch() WHERE video_id = ?"
+        ).run("unidentified");
+
+        expect(getChannelStatisticsResponse()).toMatchObject({
+            unattributedWatchedCount: 2,
+            pendingIdentificationCount: 1,
+            unidentifiedWatchedCount: 1,
+        });
     });
 });

@@ -56,6 +56,10 @@ Functional settings live in `app_settings` and are exposed through validated `GE
 
 `src/lib/youtube-sync-manager.ts` owns the process-wide synchronization lock and execution phases. `src/lib/youtube-catalog-discovery.ts` incrementally reads upload playlists, batches metadata by 50, and persists it before playlist reconciliation. `src/lib/youtube-quota.ts` counts estimated read/search/write units per Pacific quota day and atomically reserves 50 units before every mutation. Google Cloud remains authoritative for actual project consumption.
 
+### Notifications
+
+`src/lib/notifications.ts` sends optional Gotify pushes (`GOTIFY_URL` + `GOTIFY_TOKEN`, env-only). When a playlist sync finishes with `reauthorization_required`, it notifies once per connection: `youtube_integration.reauthorization_notified_at` is claimed atomically, released if the push fails, and reset by `saveYouTubeConnection`.
+
 ### Native module note
 
 `better-sqlite3` is a native Node module. `next.config.mjs` lists it under `experimental.serverComponentsExternalPackages` so it's not bundled by webpack and the `.node` binding ends up in `.next/standalone/node_modules`. The Dockerfile installs `python3 make g++` in the builder stage to compile it. If you add another native dependency, do the same.

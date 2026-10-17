@@ -82,7 +82,8 @@ export function saveYouTubeConnection(
                 connected_at = excluded.connected_at,
                 updated_at = excluded.updated_at,
                 last_sync_status = 'idle',
-                last_sync_error = NULL`
+                last_sync_error = NULL,
+                reauthorization_notified_at = NULL`
         )
         .run(channelId, channelTitle, encryptedRefreshToken);
 }
@@ -123,6 +124,25 @@ export function disconnectYouTube(): void {
                  last_sync_error = NULL
              WHERE id = 1`
         )
+        .run();
+}
+
+/** Returns true only for the first caller after a (re)connection, so alerts are sent once. */
+export function claimYouTubeReauthorizationNotification(): boolean {
+    return getDb()
+        .prepare(
+            `UPDATE youtube_integration
+             SET reauthorization_notified_at = unixepoch()
+             WHERE id = 1
+               AND encrypted_refresh_token IS NOT NULL
+               AND reauthorization_notified_at IS NULL`
+        )
+        .run().changes === 1;
+}
+
+export function releaseYouTubeReauthorizationNotification(): void {
+    getDb()
+        .prepare("UPDATE youtube_integration SET reauthorization_notified_at = NULL WHERE id = 1")
         .run();
 }
 

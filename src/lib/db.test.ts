@@ -38,7 +38,7 @@ describe("database migrations", () => {
 
         migrateDatabase(db);
 
-        expect(db.pragma("user_version", { simple: true })).toBe(5);
+        expect(db.pragma("user_version", { simple: true })).toBe(6);
         expect(db.prepare(
             "SELECT id, added, removed, video_details_version FROM youtube_sync_runs"
         ).get()).toEqual({ id: 1, added: 2, removed: 1, video_details_version: 0 });

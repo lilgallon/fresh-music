@@ -238,7 +238,7 @@ describe("sync run video details", () => {
         });
     });
 
-    it("removes video details when runs are trimmed to the latest 30", () => {
+    it("removes video details of runs older than 7 days beyond the latest 30", () => {
         let firstRunId = 0;
         for (let index = 0; index < 31; index += 1) {
             const runId = startSyncRun("scheduled", 0);
@@ -246,7 +246,7 @@ describe("sync run video details", () => {
         }
         recordSyncRunVideos(firstRunId, "added", ["orphan"]);
 
-        trimSyncRuns();
+        trimSyncRuns(Date.now() + 8 * 24 * 60 * 60 * 1000);
 
         expect(getDb().prepare("SELECT COUNT(*) AS count FROM youtube_sync_runs").get())
             .toEqual({ count: 30 });

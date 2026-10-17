@@ -30,7 +30,7 @@ All configuration, YouTube diagnostics, channel management, and backup controls 
 
 ### Persistence — server SQLite + localStorage cache
 
-The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persists channels, watched videos, settings, the local video catalogue, playlist entries, daily quota counters, and the latest 30 synchronization runs. `localStorage` is kept only as a bootstrap/offline cache for channels, watched IDs, and settings.
+The **server is the source of truth**: a SQLite DB (via `better-sqlite3`) persists channels, watched videos, settings, the local video catalogue, playlist entries, daily quota counters, and synchronization runs from the last 7 days (always at least the latest 30). The settings page summarizes those 7 days rather than only the latest run. `localStorage` is kept only as a bootstrap/offline cache for channels, watched IDs, and settings.
 
 - Singleton DB connection: `src/lib/db.ts` (path from `DB_PATH` env, defaults to `./data/freshmusic.db`).
 - Repository (prepared statements): `src/lib/repository.ts`.

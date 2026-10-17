@@ -192,6 +192,89 @@ export function getLastSuccessfulSyncAt(): number | null {
     ).get()?.completed_at ?? null;
 }
 
+export const SYNC_RUN_SUMMARY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface SyncRunSummary {
+    since: number;
+    runs: number;
+    completedRuns: number;
+    failedRuns: number;
+    added: number;
+    removed: number;
+    videoDetailsAvailable: boolean;
+    addedVideos: YouTubeSyncVideo[];
+    removedVideos: YouTubeSyncVideo[];
+    filteredVideos: YouTubeSyncVideo[];
+}
+
+export function getSyncRunSummary(now = Date.now()): SyncRunSummary {
+    const since = now - SYNC_RUN_SUMMARY_WINDOW_MS;
+    const totals = getDb().prepare<[number], {
+        runs: number;
+        completed_runs: number | null;
+        failed_runs: number | null;
+        added: number | null;
+        removed: number | null;
+        missing_details: number | null;
+    }>(
+        `SELECT COUNT(*) AS runs,
+                SUM(status = 'completed') AS completed_runs,
+                SUM(status IN ('failed', 'paused')) AS failed_runs,
+                SUM(added) AS added,
+                SUM(removed) AS removed,
+                SUM(video_details_version < 1) AS missing_details
+         FROM youtube_sync_runs
+         WHERE started_at >= ?`
+    ).get(since);
+
+    const grouped: Record<SyncRunVideoAction, YouTubeSyncVideo[]> = {
+        added: [],
+        removed: [],
+        filtered: [],
+    };
+    // A video may be recorded by several runs; keep its most recent occurrence only.
+    const rows = getDb().prepare<[number], SyncRunVideoRow>(
+        `SELECT ranked.video_id, ranked.action, ranked.filter_reason,
+                videos.title, videos.channel_title
+         FROM (
+            SELECT run_videos.video_id, run_videos.action, run_videos.filter_reason,
+                   run_videos.run_id, run_videos.rowid AS position,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY run_videos.action, run_videos.video_id
+                       ORDER BY run_videos.run_id DESC
+                   ) AS occurrence
+            FROM youtube_sync_run_videos AS run_videos
+            JOIN youtube_sync_runs AS runs ON runs.id = run_videos.run_id
+            WHERE runs.started_at >= ?
+         ) AS ranked
+         LEFT JOIN videos ON videos.video_id = ranked.video_id
+         WHERE ranked.occurrence = 1
+         ORDER BY ranked.run_id DESC, ranked.position ASC`
+    ).all(since);
+    for (const row of rows) {
+        grouped[row.action].push({
+            id: row.video_id,
+            title: row.title || "Unavailable video",
+            channelTitle: row.channel_title ?? "",
+            filterReason: row.filter_reason,
+        });
+    }
+
+    const runs = totals?.runs ?? 0;
+    return {
+        since,
+        runs,
+        completedRuns: totals?.completed_runs ?? 0,
+        failedRuns: totals?.failed_runs ?? 0,
+        added: totals?.added ?? 0,
+        removed: totals?.removed ?? 0,
+        videoDetailsAvailable: runs > 0 && (totals?.missing_details ?? 0) < runs,
+        addedVideos: grouped.added,
+        removedVideos: grouped.removed,
+        filteredVideos: grouped.filtered,
+    };
+}
+
 export function interruptStaleSyncRuns(): void {
     getDb().prepare(
         `UPDATE youtube_sync_runs
@@ -201,9 +284,11 @@ export function interruptStaleSyncRuns(): void {
     ).run(Date.now());
 }
 
-export function trimSyncRuns(): void {
+export function trimSyncRuns(now = Date.now()): void {
+    // Keep the summary window intact, and at least the latest 30 runs for diagnostics.
     getDb().prepare(
         `DELETE FROM youtube_sync_runs
-         WHERE id NOT IN (SELECT id FROM youtube_sync_runs ORDER BY id DESC LIMIT 30)`
-    ).run();
+         WHERE started_at < ?
+           AND id NOT IN (SELECT id FROM youtube_sync_runs ORDER BY id DESC LIMIT 30)`
+    ).run(now - SYNC_RUN_SUMMARY_WINDOW_MS);
 }

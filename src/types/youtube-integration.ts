@@ -57,6 +57,19 @@ export interface YouTubeSyncProgress {
     error: string | null;
 }
 
+export interface YouTubeSyncSummary {
+    since: string;
+    runs: number;
+    completedRuns: number;
+    failedRuns: number;
+    added: number;
+    removed: number;
+    videoDetailsAvailable: boolean;
+    addedVideos: YouTubeSyncVideo[];
+    removedVideos: YouTubeSyncVideo[];
+    filteredVideos: YouTubeSyncVideo[];
+}
+
 export interface YouTubeIntegrationPublicStatus {
     configured: boolean;
     connected: boolean;
@@ -98,6 +111,7 @@ export interface YouTubeIntegrationPublicStatus {
         pausedUntil: string | null;
     };
     progress: YouTubeSyncProgress | null;
+    weeklySummary: YouTubeSyncSummary;
 }
 
 export interface YouTubeSyncResult {

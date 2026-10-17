@@ -218,6 +218,7 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled, settings 
         || status.progress?.status === "paused";
     const progress = status.progress;
     const running = progress?.status === "running";
+    const weekly = status.weeklySummary;
     const quotaTotalPercent = Math.min(100, status.quota.totalLimit > 0
         ? status.quota.estimatedTotalUnits / status.quota.totalLimit * 100
         : 0);
@@ -322,8 +323,19 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled, settings 
                     <dd className="mt-1 text-zinc-300">{formatDate(status.sync.nextSyncAt)}</dd>
                 </div>
                 <div>
-                    <dt className="text-zinc-600">Last added / removed</dt>
-                    <dd className="mt-1 text-zinc-300">{progress?.added ?? status.sync.added} / {progress?.removed ?? status.sync.removed}</dd>
+                    <dt className="flex items-center gap-1 text-zinc-600">Added / removed (7 days)
+                        <SettingHelpTooltip label="Added / removed over 7 days">Playlist changes made by all synchronizations started during the last 7 days.</SettingHelpTooltip>
+                    </dt>
+                    <dd className="mt-1 text-zinc-300">{weekly.added} / {weekly.removed}</dd>
+                </div>
+                <div>
+                    <dt className="text-zinc-600">Syncs (7 days)</dt>
+                    <dd className="mt-1 text-zinc-300">
+                        {weekly.runs}
+                        {weekly.failedRuns > 0 && (
+                            <span className="text-amber-400"> · {weekly.failedRuns} failed or paused</span>
+                        )}
+                    </dd>
                 </div>
                 <div>
                     <dt className="flex items-center gap-1 text-zinc-600">Pending additions
@@ -401,35 +413,35 @@ export default function YouTubePlaylistSettings({ onWatchedReconciled, settings 
                 </div>
             )}
 
-            {progress && (
+            {weekly.runs > 0 && (
                 <div className="rounded-lg border border-zinc-800">
                     <button type="button" onClick={() => setShowDetails((value) => !value)}
                         className="flex w-full items-center justify-between p-3 text-xs font-medium text-zinc-300 hover:bg-zinc-800/40">
-                        Details of the last sync
+                        Details of the last 7 days
                         <ChevronDown className={`h-4 w-4 transition-transform ${showDetails ? "rotate-180" : ""}`} />
                     </button>
                     {showDetails && (
                         <div className="border-t border-zinc-800 p-3">
-                            {!progress.videoDetailsAvailable ? (
+                            {!weekly.videoDetailsAvailable ? (
                                 <p className="rounded-lg bg-zinc-950/30 px-3 py-4 text-xs text-zinc-500">
-                                    Video details were not recorded for this sync.
+                                    Video details were not recorded for these syncs.
                                 </p>
                             ) : (
                                 <div className="grid gap-3 lg:grid-cols-3">
                                     <SyncVideoList
                                         title="Added videos"
                                         emptyLabel="No videos were added."
-                                        videos={progress.addedVideos}
+                                        videos={weekly.addedVideos}
                                     />
                                     <SyncVideoList
                                         title="Removed videos"
                                         emptyLabel="No videos were removed."
-                                        videos={progress.removedVideos}
+                                        videos={weekly.removedVideos}
                                     />
                                     <SyncVideoList
                                         title="Filtered videos"
                                         emptyLabel="No videos were filtered."
-                                        videos={progress.filteredVideos}
+                                        videos={weekly.filteredVideos}
                                         showFilterReason
                                     />
                                 </div>

@@ -25,7 +25,7 @@ import {
 } from "./youtube-playlist-resolution";
 import { YouTubeIntegrationPublicStatus } from "@/types/youtube-integration";
 import { getLastCatalogDiscoveryAt, isApplicationInitialized } from "./catalog-repository";
-import { getLastSuccessfulSyncAt, getLatestSyncRun } from "./sync-run-repository";
+import { getLastSuccessfulSyncAt, getLatestSyncRun, getSyncRunSummary } from "./sync-run-repository";
 import { getYouTubeQuotaStatus, pauseYouTubeQuota } from "./youtube-quota";
 import { getSettings } from "./repository";
 import { isYouTubeQuotaExceededError } from "./youtube-quota-error";
@@ -48,6 +48,7 @@ export function getYouTubeIntegrationPublicStatus(): YouTubeIntegrationPublicSta
         : null;
 
     const latestRun = getLatestSyncRun();
+    const weeklySummary = getSyncRunSummary();
     let quota = getYouTubeQuotaStatus();
     const recordedErrors = [
         { message: latestRun?.error, timestamp: latestRun?.completedAt },
@@ -101,6 +102,10 @@ export function getYouTubeIntegrationPublicStatus(): YouTubeIntegrationPublicSta
             startedAt: new Date(latestRun.startedAt).toISOString(),
             completedAt: toIso(latestRun.completedAt),
         } : null,
+        weeklySummary: {
+            ...weeklySummary,
+            since: new Date(weeklySummary.since).toISOString(),
+        },
     };
 }
 

@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS youtube_integration (
   last_sync_status        TEXT NOT NULL DEFAULT 'idle',
   last_sync_error         TEXT,
   last_sync_added         INTEGER NOT NULL DEFAULT 0,
-  last_sync_removed       INTEGER NOT NULL DEFAULT 0
+  last_sync_removed       INTEGER NOT NULL DEFAULT 0,
+  reauthorization_notified_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS youtube_playlist_entries (
@@ -153,9 +154,15 @@ function hasColumn(db: Database.Database, table: string, column: string): boolea
     return rows.some((row) => row.name === column);
 }
 
+function hasTable(db: Database.Database, table: string): boolean {
+    return db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get(table) !== undefined;
+}
+
 export function migrateDatabase(db: Database.Database): void {
     const version = db.pragma("user_version", { simple: true }) as number;
-    if (version >= 5) return;
+    if (version >= 6) return;
 
     db.transaction(() => {
         if (version < 2) {
@@ -218,7 +225,15 @@ export function migrateDatabase(db: Database.Database): void {
             `);
         }
 
-        db.pragma("user_version = 5");
+        if (
+            version < 6
+            && hasTable(db, "youtube_integration")
+            && !hasColumn(db, "youtube_integration", "reauthorization_notified_at")
+        ) {
+            db.exec("ALTER TABLE youtube_integration ADD COLUMN reauthorization_notified_at INTEGER");
+        }
+
+        db.pragma("user_version = 6");
     })();
 }
 

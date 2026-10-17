@@ -87,6 +87,8 @@ Fresh Music requests only `https://www.googleapis.com/auth/youtube.force-ssl`. O
 | `GOOGLE_CLIENT_SECRET` | For playlist sync | OAuth web client secret. |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | For playlist sync | Stable, base64-encoded 32-byte key. |
 | `APP_BASE_URL` | For playlist sync | Public origin without a trailing slash, such as `https://music.example.com`. |
+| `GOTIFY_URL` | No | Gotify server URL, such as `http://gotify`. Enables a push when the Google authorization must be renewed. |
+| `GOTIFY_TOKEN` | No | Gotify application token used with `GOTIFY_URL`. |
 | `DB_PATH` | No | SQLite path; defaults to `./data/freshmusic.db` and `/app/data/freshmusic.db` in Docker. |
 
 Synchronization interval, quota budgets, per-run limits, discovery pagination and the Shorts cache duration are configured from the dedicated **Settings & Backup** page and persisted in SQLite.

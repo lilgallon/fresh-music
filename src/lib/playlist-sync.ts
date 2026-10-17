@@ -16,6 +16,7 @@ import {
 import { getYouTubeAccessToken } from "./youtube-oauth";
 import { youtubeGateway } from "./youtube-api-server";
 import { createPlaylistSyncRunner } from "./playlist-sync-core";
+import { notifyYouTubeReauthorizationRequired } from "./notifications";
 import type { YouTubeSyncPhase, YouTubeSyncResult } from "@/types/youtube-integration";
 
 export function getPlaylistSyncIntervalMs(): number {
@@ -34,7 +35,12 @@ const store = {
     markEntryRemoved: markYouTubePlaylistEntryRemoved,
     setEntryError: setYouTubePlaylistEntryError,
     startSync: startYouTubeSync,
-    finishSync: finishYouTubeSync,
+    finishSync(params: Parameters<typeof finishYouTubeSync>[0]) {
+        finishYouTubeSync(params);
+        if (params.status === "reauthorization_required") {
+            void notifyYouTubeReauthorizationRequired();
+        }
+    },
 };
 
 let runningSync: Promise<YouTubeSyncResult> | null = null;
